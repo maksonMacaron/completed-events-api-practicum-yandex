@@ -90,21 +90,20 @@ namespace EventsAPI.Controllers
         /// <summary>
         /// Создать новое мероприятие.
         /// </summary>
-        /// <param name="eventDto">Данные нового мероприятия.</param>
+        /// <param name="createEvent">Данные нового мероприятия.</param>
         /// <returns>Созданное мероприятие.</returns>
         [HttpPost]
-        public IActionResult Create([FromBody] EventDto eventDto)
+        public async Task<IActionResult> Create([FromBody] CreateEvent createEvent)
         {
-            var modelEvent = _mapper.Map<Event>(eventDto);
-            var createEventModel = _eventService.Create(modelEvent);
+            var eventInfo = await _eventService.CreateEventAsync(createEvent);
 
             return CreatedAtAction(
                 nameof(GetById),
-                new { id = createEventModel.Id },
-                new ApiResult<EventDto>
+                new { id = eventInfo.Id },
+                new ApiResult<EventInfo>
                 {
-                    Data = _mapper.Map<EventDto>(createEventModel),
-                    Message = $"Новое событие успешно создано с Id [{createEventModel.Id}]",
+                    Data = eventInfo,
+                    Message = $"Новое событие успешно создано с Id [{eventInfo.Id}]",
                     StatusCode = System.Net.HttpStatusCode.Created,
                     Success = true,
                 });
@@ -151,6 +150,7 @@ namespace EventsAPI.Controllers
         [HttpPost("{id:guid}/book")]
         [ProducesResponseType(typeof(ApiResult<Booking>), StatusCodes.Status202Accepted)]
         [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
         public async Task<IActionResult> CreateBookingAsync([FromRoute] Guid id)
         {
             var booking = await _bookingService.CreateBookingAsync(id);

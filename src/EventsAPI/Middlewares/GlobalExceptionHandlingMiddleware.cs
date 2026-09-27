@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Net;
 using EventsAPI.Contracts.Responses;
+using EventsAPI.Exceptions;
 
 namespace EventsAPI.Middlewares
 {
@@ -63,6 +64,7 @@ namespace EventsAPI.Middlewares
             {
                 ValidationException => StatusCodes.Status400BadRequest,
                 KeyNotFoundException => StatusCodes.Status404NotFound,
+                NoAvailableSeatsException => StatusCodes.Status409Conflict,
                 _ => StatusCodes.Status500InternalServerError
             };
     }

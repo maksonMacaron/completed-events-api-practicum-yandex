@@ -17,7 +17,7 @@ public class BookingProcessingServiceTests
         var eventModel = eventService.Create(NewEvent());
         var bookingService = new BookingService(eventService);
         var booking = await bookingService.CreateBookingAsync(eventModel.Id);
-        using var worker = CreateWorker(bookingService, ShortInterval);
+        using var worker = CreateWorker(bookingService, eventService, ShortInterval);
 
         // Act
         await worker.StartAsync(CancellationToken.None);
@@ -37,11 +37,37 @@ public class BookingProcessingServiceTests
     }
 
     [Fact]
+    public async Task BackgroundService_EventDeleted_RejectsPendingBooking()
+    {
+        var eventService = new EventService([]);
+        var eventModel = eventService.Create(NewEvent());
+        var bookingService = new BookingService(eventService);
+        var booking = await bookingService.CreateBookingAsync(eventModel.Id);
+        eventService.Delete(eventModel.Id);
+        using var worker = CreateWorker(bookingService, eventService, ShortInterval);
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            await WaitUntilAsync(() => booking.Status != BookingStatus.Pending);
+
+            Assert.Equal(BookingStatus.Rejected, booking.Status);
+            Assert.NotNull(booking.ProcessedAt);
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task BackgroundService_Cancellation_StopsDuringProcessingDelay()
     {
         // Arrange
-        var fakeService = new FakeBookingService(new Booking(Guid.NewGuid()));
-        using var worker = CreateWorker(fakeService, TimeSpan.FromMinutes(1));
+        var eventService = new EventService([]);
+        var eventModel = eventService.Create(NewEvent());
+        var fakeService = new FakeBookingService(new Booking(eventModel.Id));
+        using var worker = CreateWorker(fakeService, eventService, TimeSpan.FromMinutes(1));
         await worker.StartAsync(CancellationToken.None);
         await WaitUntilAsync(() => fakeService.GetPendingCalls > 0);
         var stopwatch = Stopwatch.StartNew();
@@ -59,7 +85,7 @@ public class BookingProcessingServiceTests
     {
         // Arrange
         var fakeService = new FakeBookingService { GetPendingFailuresRemaining = 1 };
-        using var worker = CreateWorker(fakeService, ShortInterval);
+        using var worker = CreateWorker(fakeService, new EventService([]), ShortInterval);
 
         // Act
         await worker.StartAsync(CancellationToken.None);
@@ -80,11 +106,13 @@ public class BookingProcessingServiceTests
     public async Task BackgroundService_ConfirmThrows_ContinuesRunning()
     {
         // Arrange
-        var fakeService = new FakeBookingService(new Booking(Guid.NewGuid()))
+        var eventService = new EventService([]);
+        var eventModel = eventService.Create(NewEvent());
+        var fakeService = new FakeBookingService(new Booking(eventModel.Id))
         {
             ThrowOnConfirm = true
         };
-        using var worker = CreateWorker(fakeService, ShortInterval);
+        using var worker = CreateWorker(fakeService, eventService, ShortInterval);
 
         // Act
         await worker.StartAsync(CancellationToken.None);
@@ -103,9 +131,11 @@ public class BookingProcessingServiceTests
 
     private static BookingProcessingService CreateWorker(
         IBookingService bookingService,
+        IEventService eventService,
         TimeSpan processingDelay) =>
         new(
             bookingService,
+            eventService,
             NullLogger<BookingProcessingService>.Instance,
             ShortInterval,
             processingDelay);
@@ -118,7 +148,7 @@ public class BookingProcessingServiceTests
     }
 
     private static Event NewEvent() =>
-        new("Тестовое событие", null, new DateTime(2026, 10, 1), new DateTime(2026, 10, 2));
+        new("Тестовое событие", null, new DateTime(2026, 10, 1), new DateTime(2026, 10, 2), 100);
 
     private sealed class FakeBookingService : IBookingService
     {

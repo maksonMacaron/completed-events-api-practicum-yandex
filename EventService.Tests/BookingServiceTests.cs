@@ -1,4 +1,5 @@
 using System.Text.Json;
+using EventsAPI.Exceptions;
 using EventsAPI.Models;
 using EventsAPI.Services;
 
@@ -25,6 +26,7 @@ public class BookingServiceTests
         Assert.InRange(booking.CreatedAt, before, DateTime.UtcNow);
         Assert.Equal(DateTimeKind.Utc, booking.CreatedAt.Kind);
         Assert.Null(booking.ProcessedAt);
+        Assert.Equal(99, eventModel.AvailableSeats);
 
         using var json = JsonDocument.Parse(
             JsonSerializer.Serialize(booking, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
@@ -48,20 +50,63 @@ public class BookingServiceTests
     }
 
     [Fact]
-    public async Task CreateBookingAsync_ConcurrentCalls_CreateAllBookings()
+    public async Task CreateBookingAsync_ConcurrentCalls_CreateUniqueBookingsUpToLimit()
     {
         // Arrange
         var eventService = new EventService(new List<Event>());
-        var eventModel = eventService.Create(NewEvent());
+        var eventModel = eventService.Create(NewEvent(10));
         var service = new BookingService(eventService);
 
         // Act
-        var bookings = await Task.WhenAll(
-            Enumerable.Range(0, 100).Select(_ => service.CreateBookingAsync(eventModel.Id)));
+        var bookings = await Task.WhenAll(Enumerable.Range(0, 10).Select(_ =>
+            Task.Run(() => service.CreateBookingAsync(eventModel.Id))));
 
         // Assert
-        Assert.Equal(100, bookings.Select(booking => booking.Id).Distinct().Count());
-        Assert.Equal(100, service.GetPendingBookings().Count);
+        Assert.Equal(10, bookings.Select(booking => booking.Id).Distinct().Count());
+        Assert.Equal(10, service.GetPendingBookings().Count);
+        Assert.Equal(0, eventModel.AvailableSeats);
+    }
+
+    [Fact]
+    public async Task CreateBookingAsync_ConcurrentCalls_PreventOverbooking()
+    {
+        // Arrange
+        var eventService = new EventService([]);
+        var eventModel = eventService.Create(NewEvent(5));
+        var service = new BookingService(eventService);
+
+        // Act
+        var attempts = await Task.WhenAll(Enumerable.Range(0, 20).Select(_ => Task.Run(async () =>
+        {
+            try
+            {
+                await service.CreateBookingAsync(eventModel.Id);
+                return true;
+            }
+            catch (NoAvailableSeatsException)
+            {
+                return false;
+            }
+        })));
+
+        // Assert
+        Assert.Equal(5, attempts.Count(success => success));
+        Assert.Equal(15, attempts.Count(success => !success));
+        Assert.Equal(0, eventModel.AvailableSeats);
+    }
+
+    [Fact]
+    public async Task CreateBookingAsync_NoAvailableSeats_Throws()
+    {
+        var eventService = new EventService([]);
+        var eventModel = eventService.Create(NewEvent(1));
+        var service = new BookingService(eventService);
+        await service.CreateBookingAsync(eventModel.Id);
+
+        var action = () => service.CreateBookingAsync(eventModel.Id);
+
+        var exception = await Assert.ThrowsAsync<NoAvailableSeatsException>(action);
+        Assert.Equal("No available seats for this event", exception.Message);
     }
 
     [Fact]
@@ -192,6 +237,23 @@ public class BookingServiceTests
     }
 
     [Fact]
+    public async Task RejectBooking_ReleasesSeatAndAllowsNewBooking()
+    {
+        var eventService = new EventService([]);
+        var eventModel = eventService.Create(NewEvent(1));
+        var service = new BookingService(eventService);
+        var rejected = await service.CreateBookingAsync(eventModel.Id);
+
+        service.RejectBooking(rejected.Id);
+        var replacement = await service.CreateBookingAsync(eventModel.Id);
+
+        Assert.Equal(BookingStatus.Rejected, rejected.Status);
+        Assert.NotNull(rejected.ProcessedAt);
+        Assert.Equal(BookingStatus.Pending, replacement.Status);
+        Assert.Equal(0, eventModel.AvailableSeats);
+    }
+
+    [Fact]
     public void NewBooking_WithEmptyEventId_Throws()
     {
         // Arrange, Act
@@ -201,6 +263,6 @@ public class BookingServiceTests
         Assert.Throws<ArgumentException>(action);
     }
 
-    private static Event NewEvent() =>
-        new("Тестовое событие", null, new DateTime(2026, 10, 1), new DateTime(2026, 10, 2));
+    private static Event NewEvent(int totalSeats = 100) =>
+        new("Тестовое событие", null, new DateTime(2026, 10, 1), new DateTime(2026, 10, 2), totalSeats);
 }

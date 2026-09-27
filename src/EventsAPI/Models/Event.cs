@@ -1,4 +1,5 @@
-﻿using System.Diagnostics.CodeAnalysis;
+﻿using System.ComponentModel.DataAnnotations;
+using System.Diagnostics.CodeAnalysis;
 
 namespace EventsAPI.Models
 {
@@ -32,6 +33,14 @@ namespace EventsAPI.Models
         /// </summary>
         public DateTime EndAt { get; set; }
 
+        /// <summary>Общее количество мест на мероприятии.</summary>
+        public int TotalSeats { get; private set; }
+
+        /// <summary>Текущее количество свободных мест на мероприятии.</summary>
+        public int AvailableSeats { get; private set; }
+
+        private readonly object _seatsLock = new();
+
         /// <summary>
         /// Создаёт пустую модель мероприятия.
         /// </summary>
@@ -44,14 +53,56 @@ namespace EventsAPI.Models
         /// <param name="description">Описание мероприятия.</param>
         /// <param name="startAt">Дата и время начала.</param>
         /// <param name="endAt">Дата и время окончания.</param>
+        /// <param name="totalSeats">Общее количество мест.</param>
         [SetsRequiredMembers]
-        public Event(string title, string? description, DateTime startAt, DateTime endAt)
+        public Event(string title, string? description, DateTime startAt, DateTime endAt, int totalSeats)
         {
+            if (totalSeats <= 0)
+                throw new ValidationException("Количество мест должно быть больше нуля");
+
             Id = Guid.NewGuid();
             Title = title;
             Description = description;
             StartAt = startAt;
             EndAt = endAt;
+            TotalSeats = totalSeats;
+            AvailableSeats = totalSeats;
+        }
+
+        /// <summary>Создаёт новое мероприятие и проверяет количество мест.</summary>
+        public static Event Create(
+            string title,
+            string? description,
+            DateTime startAt,
+            DateTime endAt,
+            int totalSeats) => new(title, description, startAt, endAt, totalSeats);
+
+        /// <summary>Пытается зарезервировать указанное количество мест.</summary>
+        public bool TryReserveSeats(int count = 1)
+        {
+            if (count <= 0)
+                throw new ArgumentOutOfRangeException(nameof(count), "Количество мест должно быть больше нуля");
+
+            lock (_seatsLock)
+            {
+                if (AvailableSeats < count)
+                    return false;
+
+                AvailableSeats -= count;
+                return true;
+            }
+        }
+
+        /// <summary>Освобождает указанное количество ранее зарезервированных мест.</summary>
+        public void ReleaseSeats(int count = 1)
+        {
+            if (count <= 0)
+                throw new ArgumentOutOfRangeException(nameof(count), "Количество мест должно быть больше нуля");
+
+            lock (_seatsLock)
+            {
+                AvailableSeats = Math.Min(TotalSeats, AvailableSeats + count);
+            }
         }
     }
 }

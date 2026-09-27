@@ -9,10 +9,10 @@ public class EventServiceTests
     {
         return new List<Event>
         {
-            new Event("Концерт", "Музыкальное событие", new DateTime(2026, 5, 1), new DateTime(2026, 5, 2)),
-            new Event("Спектакль", "Театр", new DateTime(2026, 5, 10), new DateTime(2026, 5, 11)),
-            new Event("Конференция C#", "IT", new DateTime(2026, 6, 1), new DateTime(2026, 6, 2)),
-            new Event("Концерт группы", null, new DateTime(2026, 6, 10), new DateTime(2026, 6, 11)),
+            new Event("Концерт", "Музыкальное событие", new DateTime(2026, 5, 1), new DateTime(2026, 5, 2), 100),
+            new Event("Спектакль", "Театр", new DateTime(2026, 5, 10), new DateTime(2026, 5, 11), 100),
+            new Event("Конференция C#", "IT", new DateTime(2026, 6, 1), new DateTime(2026, 6, 2), 100),
+            new Event("Концерт группы", null, new DateTime(2026, 6, 10), new DateTime(2026, 6, 11), 100),
         };
     }
 
@@ -31,7 +31,8 @@ public class EventServiceTests
             "Тестовое мероприятие",
             "Описание",
             new DateTime(2026, 7, 1),
-            new DateTime(2026, 7, 2));
+            new DateTime(2026, 7, 2),
+            100);
 
         // Act
         var createdEvent = service.Create(expectedEvent);
@@ -92,7 +93,8 @@ public class EventServiceTests
             "Обновлённое мероприятие",
             "Новое описание",
             new DateTime(2026, 8, 1),
-            new DateTime(2026, 8, 2));
+            new DateTime(2026, 8, 2),
+            100);
 
         // Act
         var updatedEvent = service.Update(expectedEvent.Id, updateModel);
@@ -217,7 +219,8 @@ public class EventServiceTests
             "Несуществующее мероприятие",
             "Описание",
             new DateTime(2026, 9, 1),
-            new DateTime(2026, 9, 2));
+            new DateTime(2026, 9, 2),
+            100);
 
         // Act + Assert
         Assert.Throws<KeyNotFoundException>(() =>
