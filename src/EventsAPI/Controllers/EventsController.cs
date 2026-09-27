@@ -171,7 +171,7 @@ namespace EventsAPI.Controllers
         [HttpPost("{id:guid}/book")]
         [ProducesResponseType(typeof(ApiResult<Booking>), StatusCodes.Status202Accepted)]
         [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
-        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+        [ProducesResponseType(typeof(ApiResult), StatusCodes.Status409Conflict)]
         public async Task<IActionResult> CreateBookingAsync(
             [FromRoute] Guid id,
             CancellationToken cancellationToken = default)
