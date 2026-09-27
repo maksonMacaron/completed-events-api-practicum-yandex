@@ -24,23 +24,26 @@
 * ASP.NET Core Web API
 * Entity Framework Core
 * PostgreSQL
+* EF Core Migrations
+* Testcontainers for .NET
 * AutoMapper
 * Swagger (OpenAPI)
-* xUnit и EF Core InMemory (тестирование)
+* xUnit
 
 ---
 
 ## 📦 Структура проекта
 
 * Controllers — обработка HTTP-запросов
-* DataAccess — `AppDbContext` и Fluent API-конфигурации сущностей
+* DataAccess — `AppDbContext`, миграции, репозитории и Fluent API-конфигурации сущностей
 * Services — бизнес-логика
 * Models — доменные модели
 * DTOs — модели для API
 * Contracts/Responses — ответы API
 * Mapping — профили AutoMapper
 * Middlewares — глобальная обработка ошибок
-* Tests — юнит-тесты
+* EventService.Tests — юнит-тесты
+* EventApi.IntegrationTests — интеграционные тесты репозиториев с PostgreSQL
 
 ---
 
@@ -63,13 +66,31 @@ Host=localhost;Port=5432;Database=eventapi;Username=postgres;Password=postgres
 
 При необходимости измените `ConnectionStrings:DefaultConnection` или переопределите её через переменную окружения `ConnectionStrings__DefaultConnection`.
 
-Схема базы (`events` и `bookings`) создаётся автоматически при первом запуске с помощью `Database.EnsureCreated()`.
+Схема базы (`events` и `bookings`) управляется миграциями EF Core. При запуске приложение вызывает `Database.Migrate()` и автоматически применяет ещё не выполненные миграции.
+
+Если база была создана в предыдущей версии приложения через `EnsureCreated()`, удалите её перед первым запуском этой версии. После этого таблицы будут созданы начальной миграцией.
 
 ### 3. Запустить проект
 
 ```bash
 dotnet run --project src/EventsAPI/EventsAPI.csproj --launch-profile http
 ```
+
+### Миграции
+
+Создать миграцию после изменения модели:
+
+```bash
+dotnet ef migrations add MigrationName --project src/EventsAPI/EventsAPI.csproj --startup-project src/EventsAPI/EventsAPI.csproj --output-dir DataAccess/Migrations
+```
+
+Применить миграции вручную:
+
+```bash
+dotnet ef database update --project src/EventsAPI/EventsAPI.csproj --startup-project src/EventsAPI/EventsAPI.csproj
+```
+
+Для выполнения этих команд нужен инструмент `dotnet-ef` версии, совместимой с EF Core проекта.
 
 ---
 
@@ -183,10 +204,21 @@ GET /events
 
 ## 🧪 Тесты
 
-Запуск:
+В решении есть два тестовых проекта:
+
+* `EventService.Tests` содержит быстрые unit-тесты на EF Core InMemory;
+* `EventApi.IntegrationTests` проверяет миграцию и все методы репозиториев на настоящей PostgreSQL.
+
+Интеграционные тесты используют одну PostgreSQL в Testcontainers. Перед каждым тестом база пересоздаётся и к ней заново применяются миграции, поэтому тесты не зависят друг от друга или от порядка запуска. Порт и строка подключения выдаются Testcontainers, захардкоженных настроек подключения нет.
+
+Перед запуском всех тестов запустите Docker. Затем выполните:
 
 ```bash
 dotnet test EventsAPI.slnx
 ```
 
-Каждый тестовый класс использует отдельную базу EF Core InMemory с уникальным именем, поэтому PostgreSQL для запуска тестов не требуется.
+Запустить только unit-тесты можно без Docker:
+
+```bash
+dotnet test EventService.Tests/EventService.Tests.csproj
+```

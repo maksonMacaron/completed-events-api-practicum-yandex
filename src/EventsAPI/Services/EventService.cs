@@ -1,18 +1,17 @@
 using System.ComponentModel.DataAnnotations;
-using EventsAPI.DataAccess;
+using EventsAPI.DataAccess.Repositories;
 using EventsAPI.DTOs;
 using EventsAPI.Models;
-using Microsoft.EntityFrameworkCore;
 
 namespace EventsAPI.Services;
 
 public class EventService : IEventService
 {
-    private readonly AppDbContext _context;
+    private readonly IEventRepository _eventRepository;
 
-    public EventService(AppDbContext context)
+    public EventService(IEventRepository eventRepository)
     {
-        _context = context;
+        _eventRepository = eventRepository;
     }
 
     public async Task<EventInfo> CreateEventAsync(
@@ -29,8 +28,7 @@ public class EventService : IEventService
             item.EndAt,
             item.TotalSeats.Value);
 
-        await _context.Events.AddAsync(eventNew, cancellationToken);
-        await _context.SaveChangesAsync(cancellationToken);
+        await _eventRepository.AddAsync(eventNew, cancellationToken);
 
         return ToInfo(eventNew);
     }
@@ -38,8 +36,7 @@ public class EventService : IEventService
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var eventItem = await FindByIdAsync(id, cancellationToken);
-        _context.Events.Remove(eventItem);
-        await _context.SaveChangesAsync(cancellationToken);
+        await _eventRepository.DeleteAsync(eventItem, cancellationToken);
     }
 
     public async Task<PaginatedResult<Event>> GetAllAsync(
@@ -49,44 +46,18 @@ public class EventService : IEventService
         DateTime? from,
         DateTime? to,
         CancellationToken cancellationToken = default)
-    {
-        var query = _context.Events.AsNoTracking().AsQueryable();
-
-        if (!string.IsNullOrWhiteSpace(title))
-        {
-            var normalizedTitle = title.ToLower();
-            query = query.Where(item => item.Title.ToLower().Contains(normalizedTitle));
-        }
-
-        if (from.HasValue)
-            query = query.Where(item => item.StartAt >= from.Value);
-
-        if (to.HasValue)
-            query = query.Where(item => item.EndAt <= to.Value);
-
-        var total = await query.CountAsync(cancellationToken);
-        var items = await query
-            .OrderBy(item => item.StartAt)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync(cancellationToken);
-
-        return new PaginatedResult<Event>
-        {
-            Count = items.Count,
-            Total = total,
-            Items = items,
-            Page = page,
-            PageSize = pageSize
-        };
-    }
+        => await _eventRepository.GetAllAsync(
+            page,
+            pageSize,
+            title,
+            from,
+            to,
+            cancellationToken);
 
     public async Task<Event> GetByIdAsync(
         Guid id,
         CancellationToken cancellationToken = default) =>
-        await _context.Events
-            .AsNoTracking()
-            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken)
+        await _eventRepository.GetByIdAsync(id, cancellationToken: cancellationToken)
         ?? throw new KeyNotFoundException($"Событие по Id [{id}] не найдено");
 
     public async Task<Event> UpdateAsync(
@@ -100,12 +71,12 @@ public class EventService : IEventService
         eventItem.StartAt = item.StartAt;
         eventItem.EndAt = item.EndAt;
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await _eventRepository.UpdateAsync(eventItem, cancellationToken);
         return eventItem;
     }
 
     private async Task<Event> FindByIdAsync(Guid id, CancellationToken cancellationToken) =>
-        await _context.Events.FirstOrDefaultAsync(item => item.Id == id, cancellationToken)
+        await _eventRepository.GetByIdAsync(id, trackChanges: true, cancellationToken)
         ?? throw new KeyNotFoundException($"Событие по Id [{id}] не найдено");
 
     private static EventInfo ToInfo(Event eventItem) => new()

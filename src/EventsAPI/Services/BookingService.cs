@@ -1,7 +1,6 @@
-using EventsAPI.DataAccess;
+using EventsAPI.DataAccess.Repositories;
 using EventsAPI.Exceptions;
 using EventsAPI.Models;
-using Microsoft.EntityFrameworkCore;
 
 namespace EventsAPI.Services;
 
@@ -10,11 +9,15 @@ public class BookingService : IBookingService
 {
     private static readonly SemaphoreSlim BookingLock = new(1, 1);
 
-    private readonly AppDbContext _context;
+    private readonly IEventRepository _eventRepository;
+    private readonly IBookingRepository _bookingRepository;
 
-    public BookingService(AppDbContext context)
+    public BookingService(
+        IEventRepository eventRepository,
+        IBookingRepository bookingRepository)
     {
-        _context = context;
+        _eventRepository = eventRepository;
+        _bookingRepository = bookingRepository;
     }
 
     public async Task<Booking> CreateBookingAsync(
@@ -24,16 +27,17 @@ public class BookingService : IBookingService
         await BookingLock.WaitAsync(cancellationToken);
         try
         {
-            var eventItem = await _context.Events
-                .FirstOrDefaultAsync(item => item.Id == eventId, cancellationToken)
+            var eventItem = await _eventRepository.GetByIdAsync(
+                eventId,
+                trackChanges: true,
+                cancellationToken)
                 ?? throw new KeyNotFoundException($"Событие по Id [{eventId}] не найдено");
 
             if (!eventItem.TryReserveSeats())
                 throw new NoAvailableSeatsException();
 
             var booking = new Booking(eventId);
-            await _context.Bookings.AddAsync(booking, cancellationToken);
-            await _context.SaveChangesAsync(cancellationToken);
+            await _bookingRepository.AddAsync(booking, cancellationToken);
 
             return booking;
         }
@@ -46,17 +50,12 @@ public class BookingService : IBookingService
     public async Task<Booking> GetBookingByIdAsync(
         Guid bookingId,
         CancellationToken cancellationToken = default) =>
-        await _context.Bookings
-            .AsNoTracking()
-            .FirstOrDefaultAsync(booking => booking.Id == bookingId, cancellationToken)
+        await _bookingRepository.GetByIdAsync(bookingId, cancellationToken: cancellationToken)
         ?? throw new KeyNotFoundException($"Бронь по Id [{bookingId}] не найдена");
 
     public async Task<IReadOnlyList<Booking>> GetPendingBookingsAsync(
         CancellationToken cancellationToken = default) =>
-        await _context.Bookings
-            .AsNoTracking()
-            .Where(booking => booking.Status == BookingStatus.Pending)
-            .ToListAsync(cancellationToken);
+        await _bookingRepository.GetPendingAsync(cancellationToken);
 
     public async Task ConfirmBookingAsync(
         Guid bookingId,
@@ -67,7 +66,7 @@ public class BookingService : IBookingService
             return;
 
         booking.Confirm();
-        await _context.SaveChangesAsync(cancellationToken);
+        await _bookingRepository.UpdateAsync(booking, cancellationToken);
     }
 
     public async Task RejectBookingAsync(
@@ -78,15 +77,17 @@ public class BookingService : IBookingService
         if (booking.Status != BookingStatus.Pending)
             return;
 
-        var eventItem = await _context.Events
-            .FirstOrDefaultAsync(item => item.Id == booking.EventId, cancellationToken);
+        var eventItem = await _eventRepository.GetByIdAsync(
+            booking.EventId,
+            trackChanges: true,
+            cancellationToken);
         eventItem?.ReleaseSeats();
 
         booking.Reject();
-        await _context.SaveChangesAsync(cancellationToken);
+        await _bookingRepository.UpdateAsync(booking, cancellationToken);
     }
 
     private async Task<Booking> FindByIdAsync(Guid bookingId, CancellationToken cancellationToken) =>
-        await _context.Bookings.FirstOrDefaultAsync(booking => booking.Id == bookingId, cancellationToken)
+        await _bookingRepository.GetByIdAsync(bookingId, trackChanges: true, cancellationToken)
         ?? throw new KeyNotFoundException($"Бронь по Id [{bookingId}] не найдена");
 }
