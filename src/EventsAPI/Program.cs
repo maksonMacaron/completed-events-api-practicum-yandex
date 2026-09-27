@@ -1,13 +1,19 @@
 using AutoMapper;
 using EventsAPI.Contracts.Responses;
+using EventsAPI.DataAccess;
 using EventsAPI.Mapping;
 using EventsAPI.Middlewares;
 using EventsAPI.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using System.Net;
 using System.Reflection;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
 
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen(options =>
@@ -16,8 +22,10 @@ builder.Services.AddSwaggerGen(options =>
     options.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, xmlFilename));
 });
 builder.Services.AddAutoMapper(cfg => { }, typeof(EventProfile));
-builder.Services.AddSingleton<IEventService, EventService>();
-builder.Services.AddSingleton<IBookingService, BookingService>();
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+builder.Services.AddScoped<IEventService, EventService>();
+builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddHostedService<BookingProcessingService>();
 builder.Services.AddControllers().ConfigureApiBehaviorOptions(options =>
 {
@@ -39,6 +47,12 @@ builder.Services.AddControllers().ConfigureApiBehaviorOptions(options =>
 });
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.EnsureCreated();
+}
 
 app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
 

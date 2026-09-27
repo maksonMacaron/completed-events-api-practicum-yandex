@@ -1,29 +1,26 @@
 using EventsAPI.Models;
 
-namespace EventsAPI.Services
+namespace EventsAPI.Services;
+
+/// <summary>Операции создания, получения и обработки бронирований.</summary>
+public interface IBookingService
 {
-    /// <summary>Операции создания и получения бронирований.</summary>
-    public interface IBookingService
-    {
-        /// <summary>Создаёт бронь для мероприятия.</summary>
-        /// <param name="eventId">Идентификатор мероприятия.</param>
-        /// <returns>Созданная бронь.</returns>
-        Task<Booking> CreateBookingAsync(Guid eventId);
-        /// <summary>Находит бронь по идентификатору.</summary>
-        /// <param name="bookingId">Идентификатор брони.</param>
-        /// <returns>Найденная бронь.</returns>
-        Task<Booking> GetBookingByIdAsync(Guid bookingId);
+    Task<Booking> CreateBookingAsync(
+        Guid eventId,
+        CancellationToken cancellationToken = default);
 
-        /// <summary>Возвращает брони, ожидающие обработки.</summary>
-        /// <returns>Список ожидающих броней.</returns>
-        IReadOnlyList<Booking> GetPendingBookings();
+    Task<Booking> GetBookingByIdAsync(
+        Guid bookingId,
+        CancellationToken cancellationToken = default);
 
-        /// <summary>Подтверждает ожидающую бронь.</summary>
-        /// <param name="bookingId">Идентификатор брони.</param>
-        void ConfirmBooking(Guid bookingId);
+    Task<IReadOnlyList<Booking>> GetPendingBookingsAsync(
+        CancellationToken cancellationToken = default);
 
-        /// <summary>Отклоняет ожидающую бронь.</summary>
-        /// <param name="bookingId">Идентификатор брони.</param>
-        void RejectBooking(Guid bookingId);
-    }
+    Task ConfirmBookingAsync(
+        Guid bookingId,
+        CancellationToken cancellationToken = default);
+
+    Task RejectBookingAsync(
+        Guid bookingId,
+        CancellationToken cancellationToken = default);
 }

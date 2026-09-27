@@ -1,7 +1,5 @@
 using System.ComponentModel.DataAnnotations;
-using EventsAPI.DTOs;
 using EventsAPI.Models;
-using EventsAPI.Services;
 
 namespace EventsAPI.Tests;
 
@@ -47,7 +45,7 @@ public class EventSeatsTests
     }
 
     [Fact]
-    public void ReleaseSeats_IncreasesAvailableSeatsWithoutExceedingTotalSeats()
+    public void ReleaseSeats_DoesNotExceedTotalSeats()
     {
         var eventItem = NewEvent(2);
         eventItem.TryReserveSeats(2);
@@ -57,29 +55,10 @@ public class EventSeatsTests
         Assert.Equal(2, eventItem.AvailableSeats);
     }
 
-    [Fact]
-    public async Task CreateEventAsync_ReturnsSeatCounts()
-    {
-        var service = new EventService([]);
-        var request = new CreateEvent
-        {
-            Title = "Концерт",
-            StartAt = new DateTime(2026, 10, 1),
-            EndAt = new DateTime(2026, 10, 2),
-            TotalSeats = 25
-        };
-
-        var result = await service.CreateEventAsync(request);
-
-        Assert.Equal(25, result.TotalSeats);
-        Assert.Equal(25, result.AvailableSeats);
-        Assert.Equal(25, service.GetById(result.Id).AvailableSeats);
-    }
-
     private static Event NewEvent(int totalSeats) => Event.Create(
         "Концерт",
         null,
-        new DateTime(2026, 10, 1),
-        new DateTime(2026, 10, 2),
+        DateTime.UtcNow.AddDays(1),
+        DateTime.UtcNow.AddDays(2),
         totalSeats);
 }

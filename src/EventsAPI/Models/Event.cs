@@ -39,12 +39,16 @@ namespace EventsAPI.Models
         /// <summary>Текущее количество свободных мест на мероприятии.</summary>
         public int AvailableSeats { get; private set; }
 
+        /// <summary>Бронирования мероприятия.</summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public ICollection<Booking> Bookings { get; private set; } = [];
+
         private readonly object _seatsLock = new();
 
-        /// <summary>
-        /// Создаёт пустую модель мероприятия.
-        /// </summary>
-        public Event() { }
+        private Event()
+        {
+            Title = null!;
+        }
 
         /// <summary>
         /// Создаёт новое мероприятие с указанными параметрами.

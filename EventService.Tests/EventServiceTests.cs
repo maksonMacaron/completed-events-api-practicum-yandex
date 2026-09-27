@@ -1,229 +1,106 @@
-﻿using EventsAPI.Models;
+using EventsAPI.DTOs;
 using EventsAPI.Services;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace EventsAPI.Tests;
 
-public class EventServiceTests
+public sealed class EventServiceTests : IDisposable
 {
-    private static List<Event> CreateTestEvents()
-    {
-        return new List<Event>
-        {
-            new Event("Концерт", "Музыкальное событие", new DateTime(2026, 5, 1), new DateTime(2026, 5, 2), 100),
-            new Event("Спектакль", "Театр", new DateTime(2026, 5, 10), new DateTime(2026, 5, 11), 100),
-            new Event("Конференция C#", "IT", new DateTime(2026, 6, 1), new DateTime(2026, 6, 2), 100),
-            new Event("Концерт группы", null, new DateTime(2026, 6, 10), new DateTime(2026, 6, 11), 100),
-        };
-    }
+    private readonly ServiceProvider _provider = TestServices.BuildProvider();
 
-    private static IEventService CreateService()
+    public void Dispose() => _provider.Dispose();
+
+    [Fact]
+    public async Task CreateEventAsync_AddsAndReturnsEvent()
     {
-        return new EventService(CreateTestEvents());
+        using var scope = _provider.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IEventService>();
+        var request = NewCreateEvent("Тестовое мероприятие");
+
+        var created = await service.CreateEventAsync(request);
+        var saved = await service.GetByIdAsync(created.Id);
+
+        Assert.NotEqual(Guid.Empty, created.Id);
+        Assert.Equal(request.Title, saved.Title);
+        Assert.Equal(request.TotalSeats, saved.TotalSeats);
+        Assert.Equal(request.TotalSeats, saved.AvailableSeats);
     }
 
     [Fact]
-    public void Create_ShouldAddAndReturnCreatedEvent()
+    public async Task GetAllAsync_AppliesFiltersAndPagination()
     {
-        // Arrange
-        var service = CreateService();
+        using var scope = _provider.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IEventService>();
+        var first = NewCreateEvent("Концерт группы", 1);
+        var second = NewCreateEvent("Спектакль", 5);
+        await service.CreateEventAsync(first);
+        await service.CreateEventAsync(second);
 
-        var expectedEvent = new Event(
-            "Тестовое мероприятие",
-            "Описание",
-            new DateTime(2026, 7, 1),
-            new DateTime(2026, 7, 2),
-            100);
+        var result = await service.GetAllAsync(
+            page: 1,
+            pageSize: 10,
+            title: "концерт",
+            from: first.StartAt.AddHours(-1),
+            to: first.EndAt.AddHours(1));
 
-        // Act
-        var createdEvent = service.Create(expectedEvent);
-
-        // Assert
-        Assert.NotNull(createdEvent);
-        Assert.NotEqual(Guid.Empty, createdEvent.Id);
-        Assert.Equal(expectedEvent.Title, createdEvent.Title);
-        Assert.Equal(expectedEvent.Description, createdEvent.Description);
-        Assert.Equal(expectedEvent.StartAt, createdEvent.StartAt);
-        Assert.Equal(expectedEvent.EndAt, createdEvent.EndAt);
-
-        var savedEvent = service.GetById(createdEvent.Id);
-        Assert.Equal(createdEvent.Id, savedEvent.Id);
-    }
-
-    [Fact]
-    public void GetAll_ShouldReturnAllEvents()
-    {
-        // Arrange
-        var service = CreateService();
-
-        // Act
-        var result = service.GetAll(1, 10, null, null, null);
-
-        // Assert
-        Assert.Equal(4, result.Total);
-        Assert.Equal(4, result.Count);
-    }
-
-    [Fact]
-    public void GetById_WhenEventExists_ShouldReturnEvent()
-    {
-        // Arrange
-        var events = CreateTestEvents();
-        var service = new EventService(events);
-
-        var expectedEvent = events[0];
-
-        // Act
-        var result = service.GetById(expectedEvent.Id);
-
-        // Assert
-        Assert.Equal(expectedEvent.Id, result.Id);
-        Assert.Equal(expectedEvent.Title, result.Title);
-    }
-
-    [Fact]
-    public void Update_WhenEventExists_ShouldUpdateEvent()
-    {
-        // Arrange
-        var events = CreateTestEvents();
-        var service = new EventService(events);
-
-        var expectedEvent = events[0];
-
-        var updateModel = new Event(
-            "Обновлённое мероприятие",
-            "Новое описание",
-            new DateTime(2026, 8, 1),
-            new DateTime(2026, 8, 2),
-            100);
-
-        // Act
-        var updatedEvent = service.Update(expectedEvent.Id, updateModel);
-
-        // Assert
-        Assert.Equal(expectedEvent.Id, updatedEvent.Id);
-        Assert.Equal(updateModel.Title, updatedEvent.Title);
-        Assert.Equal(updateModel.Description, updatedEvent.Description);
-        Assert.Equal(updateModel.StartAt, updatedEvent.StartAt);
-        Assert.Equal(updateModel.EndAt, updatedEvent.EndAt);
-    }
-
-    [Fact]
-    public void Delete_WhenEventExists_ShouldRemoveEvent()
-    {
-        // Arrange
-        var events = CreateTestEvents();
-        var service = new EventService(events);
-
-        var expectedEvent = events[0];
-
-        // Act
-        service.Delete(expectedEvent.Id);
-
-        // Assert
-        Assert.Throws<KeyNotFoundException>(() => service.GetById(expectedEvent.Id));
-    }
-
-    [Fact]
-    public void GetAll_WhenTitleFilterProvided_ShouldReturnMatchingEvents()
-    {
-        // Arrange
-        var service = CreateService();
-
-        // Act
-        var result = service.GetAll(1, 10, "концерт", null, null);
-
-        // Assert
-        Assert.Equal(2, result.Total);
-        Assert.All(result.Items, item =>
-            Assert.Contains("концерт", item.Title, StringComparison.OrdinalIgnoreCase));
-    }
-
-    [Fact]
-    public void GetAll_WhenDateFiltersProvided_ShouldReturnEventsInRange()
-    {
-        // Arrange
-        var service = CreateService();
-
-        var from = new DateTime(2026, 6, 1);
-        var to = new DateTime(2026, 6, 30);
-
-        // Act
-        var result = service.GetAll(1, 10, null, from, to);
-
-        // Assert
-        Assert.Equal(2, result.Total);
-        Assert.All(result.Items, item =>
-        {
-            Assert.True(item.StartAt >= from);
-            Assert.True(item.EndAt <= to);
-        });
-    }
-
-    [Fact]
-    public void GetAll_WhenPaginationProvided_ShouldReturnCorrectPage()
-    {
-        // Arrange
-        var service = CreateService();
-
-        // Act
-        var result = service.GetAll(2, 2, null, null, null);
-
-        // Assert
-        Assert.Equal(4, result.Total);
-        Assert.Equal(2, result.Page);
-        Assert.Equal(2, result.PageSize);
-        Assert.Equal(2, result.Count);
-    }
-
-    [Fact]
-    public void GetAll_WhenCombinedFiltersProvided_ShouldReturnMatchingEvents()
-    {
-        // Arrange
-        var service = CreateService();
-
-        var from = new DateTime(2026, 6, 1);
-        var to = new DateTime(2026, 6, 30);
-
-        // Act
-        var result = service.GetAll(1, 10, "концерт", from, to);
-
-        // Assert
         Assert.Equal(1, result.Total);
-
-        var expectedEvent = result.Items.Single();
-
-        Assert.Contains("концерт", expectedEvent.Title, StringComparison.OrdinalIgnoreCase);
-        Assert.True(expectedEvent.StartAt >= from);
-        Assert.True(expectedEvent.EndAt <= to);
+        Assert.Equal(1, result.Count);
+        Assert.Equal("Концерт группы", Assert.Single(result.Items).Title);
     }
 
     [Fact]
-    public void GetById_WhenEventDoesNotExist_ShouldThrowKeyNotFoundException()
+    public async Task UpdateAsync_UpdatesStoredEvent()
     {
-        // Arrange
-        var service = CreateService();
-        var notExpectedEventId = Guid.NewGuid();
+        using var scope = _provider.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IEventService>();
+        var created = await service.CreateEventAsync(NewCreateEvent("Исходное название"));
+        var startAt = DateTime.UtcNow.AddDays(10);
 
-        // Act + Assert
-        Assert.Throws<KeyNotFoundException>(() => service.GetById(notExpectedEventId));
+        var updated = await service.UpdateAsync(created.Id, new EventDto
+        {
+            Id = created.Id,
+            Title = "Новое название",
+            Description = "Новое описание",
+            StartAt = startAt,
+            EndAt = startAt.AddHours(2)
+        });
+
+        Assert.Equal("Новое название", updated.Title);
+        Assert.Equal("Новое описание", updated.Description);
+        Assert.Equal(startAt, updated.StartAt);
     }
 
     [Fact]
-    public void Update_WhenEventDoesNotExist_ShouldThrowKeyNotFoundException()
+    public async Task DeleteAsync_RemovesEvent()
     {
-        // Arrange
-        var service = CreateService();
-        var notExpectedEventId = Guid.NewGuid();
+        using var scope = _provider.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IEventService>();
+        var created = await service.CreateEventAsync(NewCreateEvent("Для удаления"));
 
-        var updateModel = new Event(
-            "Несуществующее мероприятие",
-            "Описание",
-            new DateTime(2026, 9, 1),
-            new DateTime(2026, 9, 2),
-            100);
+        await service.DeleteAsync(created.Id);
 
-        // Act + Assert
-        Assert.Throws<KeyNotFoundException>(() =>
-            service.Update(notExpectedEventId, updateModel));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => service.GetByIdAsync(created.Id));
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_MissingEvent_Throws()
+    {
+        using var scope = _provider.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IEventService>();
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => service.GetByIdAsync(Guid.NewGuid()));
+    }
+
+    internal static CreateEvent NewCreateEvent(string title, int daysFromNow = 1, int seats = 100)
+    {
+        var startAt = DateTime.UtcNow.AddDays(daysFromNow);
+        return new CreateEvent
+        {
+            Title = title,
+            Description = "Описание",
+            StartAt = startAt,
+            EndAt = startAt.AddHours(2),
+            TotalSeats = seats
+        };
     }
 }

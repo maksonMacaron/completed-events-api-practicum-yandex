@@ -29,13 +29,16 @@ namespace EventsAPI.Controllers
         /// Получить бронь по идентификатору.
         /// </summary>
         /// <param name="id">Идентификатор брони.</param>
+        /// <param name="cancellationToken">Токен отмены запроса.</param>
         /// <returns>Найденная бронь или ошибка 404, если бронь не существует.</returns>
         [HttpGet("{id:guid}", Name = "GetBookingById")]
         [ProducesResponseType(typeof(ApiResult<Booking>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> GetBookingByIdAsync([FromRoute] Guid id)
+        public async Task<IActionResult> GetBookingByIdAsync(
+            [FromRoute] Guid id,
+            CancellationToken cancellationToken = default)
         {
-            var booking = await _bookingService.GetBookingByIdAsync(id);
+            var booking = await _bookingService.GetBookingByIdAsync(id, cancellationToken);
             return Ok(new ApiResult<Booking>
             {
                 Data = booking,
