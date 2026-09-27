@@ -36,6 +36,12 @@ namespace EventsAPI.DTOs
         [Required(ErrorMessage = "Дата окончания обязательна")]
         public DateTime EndAt { get; set; }
 
+        /// <summary>Общее количество мест на мероприятии.</summary>
+        public int TotalSeats { get; set; }
+
+        /// <summary>Текущее количество свободных мест.</summary>
+        public int AvailableSeats { get; set; }
+
         /// <summary>
         /// Выполняет дополнительную валидацию модели.
         /// </summary>

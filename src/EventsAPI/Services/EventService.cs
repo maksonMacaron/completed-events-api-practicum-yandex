@@ -12,13 +12,13 @@ namespace EventsAPI.Services
         {
             var events = new List<Event>
             {
-                new Event("Мероприятие #1", "Тут описание", DateTime.Now, DateTime.Now.AddDays(5)),
-                new Event("Еще одно какое-то мероприятие", null, DateTime.Now.AddDays(10), DateTime.Now.AddDays(20)),
-                new Event("Концерт Сергея Лазарева", null, DateTime.Now.AddDays(15), DateTime.Now.AddDays(16)),
-                new Event("Спектакль Горе от ума", null, DateTime.Now.AddDays(17), DateTime.Now.AddDays(18)),
-                new Event("Спектакль Алые паруса", null, DateTime.Now.AddDays(22), DateTime.Now.AddDays(23)),
-                new Event("Спектакль Мартышка", null, DateTime.Now.AddDays(28), DateTime.Now.AddDays(30)),
-                new Event("Спектакль Пикова дама", null, DateTime.Now.AddDays(30), DateTime.Now.AddDays(35)),
+                Event.Create("Мероприятие #1", "Тут описание", DateTime.Now, DateTime.Now.AddDays(5), 100),
+                Event.Create("Еще одно какое-то мероприятие", null, DateTime.Now.AddDays(10), DateTime.Now.AddDays(20), 100),
+                Event.Create("Концерт Сергея Лазарева", null, DateTime.Now.AddDays(15), DateTime.Now.AddDays(16), 100),
+                Event.Create("Спектакль Горе от ума", null, DateTime.Now.AddDays(17), DateTime.Now.AddDays(18), 100),
+                Event.Create("Спектакль Алые паруса", null, DateTime.Now.AddDays(22), DateTime.Now.AddDays(23), 100),
+                Event.Create("Спектакль Мартышка", null, DateTime.Now.AddDays(28), DateTime.Now.AddDays(30), 100),
+                Event.Create("Спектакль Пикова дама", null, DateTime.Now.AddDays(30), DateTime.Now.AddDays(35), 100),
             };
 
             _events = new ConcurrentDictionary<Guid, Event>(
@@ -33,9 +33,36 @@ namespace EventsAPI.Services
 
         public Event Create(Event item)
         {
-            var eventNew = new Event(item.Title, item.Description, item.StartAt, item.EndAt);
+            var eventNew = Event.Create(item.Title, item.Description, item.StartAt, item.EndAt, item.TotalSeats);
             _events.TryAdd(eventNew.Id, eventNew);
             return eventNew;
+        }
+
+        public Task<EventInfo> CreateEventAsync(CreateEvent item)
+        {
+            if (item.TotalSeats is null)
+                throw new System.ComponentModel.DataAnnotations.ValidationException(
+                    "Общее количество мест обязательно");
+
+            var eventNew = Event.Create(
+                item.Title,
+                item.Description,
+                item.StartAt,
+                item.EndAt,
+                item.TotalSeats.Value);
+
+            _events.TryAdd(eventNew.Id, eventNew);
+
+            return Task.FromResult(new EventInfo
+            {
+                Id = eventNew.Id,
+                Title = eventNew.Title,
+                Description = eventNew.Description,
+                StartAt = eventNew.StartAt,
+                EndAt = eventNew.EndAt,
+                TotalSeats = eventNew.TotalSeats,
+                AvailableSeats = eventNew.AvailableSeats
+            });
         }
 
         public void Delete(Guid id)

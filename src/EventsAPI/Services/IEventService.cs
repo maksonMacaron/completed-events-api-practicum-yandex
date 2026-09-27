@@ -9,6 +9,7 @@ namespace EventsAPI.Services
         Event GetById(Guid id);
         void Delete(Guid id);
         Event Create(Event item);
+        Task<EventInfo> CreateEventAsync(CreateEvent item);
         Event Update(Guid id, Event item);
     }
 }
