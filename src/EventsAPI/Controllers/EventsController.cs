@@ -40,16 +40,24 @@ namespace EventsAPI.Controllers
         /// <param name="title">Наименование мероприятия (регистронезависимый, частичное совпадение)</param>
         /// <param name="from">Дата события, которые начинаются не раньше указанной</param>
         /// <param name="to">Дата событий, которые заканчиваются не позже указанной даты</param>
+        /// <param name="cancellationToken">Токен отмены запроса.</param>
         /// <returns>Список мероприятий согласно фильтру или все мероприятия</returns>
         [HttpGet]
-        public IActionResult GetAll(
+        public async Task<IActionResult> GetAllAsync(
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 10,
             [FromQuery] string? title = null,
             [FromQuery] DateTime? from = null,
-            [FromQuery] DateTime? to = null)
+            [FromQuery] DateTime? to = null,
+            CancellationToken cancellationToken = default)
         {
-            var serviceResult = _eventService.GetAll(page, pageSize, title, from, to);
+            var serviceResult = await _eventService.GetAllAsync(
+                page,
+                pageSize,
+                title,
+                from,
+                to,
+                cancellationToken);
 
             var dtoResult = new PaginatedResult<EventDto>
             {
@@ -73,11 +81,14 @@ namespace EventsAPI.Controllers
         /// Получить мероприятие по идентификатору.
         /// </summary>
         /// <param name="id">Идентификатор мероприятия.</param>
+        /// <param name="cancellationToken">Токен отмены запроса.</param>
         /// <returns>Найденное мероприятие или ошибка 404, если мероприятие не существует.</returns>
         [HttpGet("{id}")]
-        public IActionResult GetById([FromRoute] Guid id)
+        public async Task<IActionResult> GetByIdAsync(
+            [FromRoute] Guid id,
+            CancellationToken cancellationToken = default)
         {
-            var findModelEvent = _eventService.GetById(id);
+            var findModelEvent = await _eventService.GetByIdAsync(id, cancellationToken);
             return Ok(new ApiResult<EventDto>
             {
                 Data = _mapper.Map<EventDto>(findModelEvent),
@@ -91,14 +102,17 @@ namespace EventsAPI.Controllers
         /// Создать новое мероприятие.
         /// </summary>
         /// <param name="createEvent">Данные нового мероприятия.</param>
+        /// <param name="cancellationToken">Токен отмены запроса.</param>
         /// <returns>Созданное мероприятие.</returns>
         [HttpPost]
-        public async Task<IActionResult> Create([FromBody] CreateEvent createEvent)
+        public async Task<IActionResult> CreateAsync(
+            [FromBody] CreateEvent createEvent,
+            CancellationToken cancellationToken = default)
         {
-            var eventInfo = await _eventService.CreateEventAsync(createEvent);
+            var eventInfo = await _eventService.CreateEventAsync(createEvent, cancellationToken);
 
             return CreatedAtAction(
-                nameof(GetById),
+                "GetById",
                 new { id = eventInfo.Id },
                 new ApiResult<EventInfo>
                 {
@@ -114,12 +128,15 @@ namespace EventsAPI.Controllers
         /// </summary>
         /// <param name="id">Идентификатор мероприятия.</param>
         /// <param name="eventDto">Новые данные мероприятия.</param>
+        /// <param name="cancellationToken">Токен отмены запроса.</param>
         /// <returns>Обновлённое мероприятие или ошибка, если мероприятие не найдено.</returns>
         [HttpPut("{id}")]
-        public IActionResult Update([FromRoute] Guid id, [FromBody] EventDto eventDto)
+        public async Task<IActionResult> UpdateAsync(
+            [FromRoute] Guid id,
+            [FromBody] EventDto eventDto,
+            CancellationToken cancellationToken = default)
         {
-            var modelEvent = _mapper.Map<Event>(eventDto);
-            var updateEventModel = _eventService.Update(id, modelEvent);
+            var updateEventModel = await _eventService.UpdateAsync(id, eventDto, cancellationToken);
 
             return Ok(new ApiResult<EventDto>
             {
@@ -134,11 +151,14 @@ namespace EventsAPI.Controllers
         /// Удалить мероприятие по идентификатору.
         /// </summary>
         /// <param name="id">Идентификатор мероприятия.</param>
+        /// <param name="cancellationToken">Токен отмены запроса.</param>
         /// <returns>Пустой ответ, если удаление прошло успешно, или ошибка 404.</returns>
         [HttpDelete("{id}")]
-        public IActionResult Delete([FromRoute] Guid id)
+        public async Task<IActionResult> DeleteAsync(
+            [FromRoute] Guid id,
+            CancellationToken cancellationToken = default)
         {
-            _eventService.Delete(id);
+            await _eventService.DeleteAsync(id, cancellationToken);
             return NoContent();
         }
 
@@ -146,14 +166,17 @@ namespace EventsAPI.Controllers
         /// Создать бронь для мероприятия.
         /// </summary>
         /// <param name="id">Идентификатор мероприятия.</param>
+        /// <param name="cancellationToken">Токен отмены запроса.</param>
         /// <returns>Созданная бронь со статусом 202 и ссылкой на её ресурс либо ошибка 404.</returns>
         [HttpPost("{id:guid}/book")]
         [ProducesResponseType(typeof(ApiResult<Booking>), StatusCodes.Status202Accepted)]
         [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
-        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
-        public async Task<IActionResult> CreateBookingAsync([FromRoute] Guid id)
+        [ProducesResponseType(typeof(ApiResult), StatusCodes.Status409Conflict)]
+        public async Task<IActionResult> CreateBookingAsync(
+            [FromRoute] Guid id,
+            CancellationToken cancellationToken = default)
         {
-            var booking = await _bookingService.CreateBookingAsync(id);
+            var booking = await _bookingService.CreateBookingAsync(id, cancellationToken);
 
             return AcceptedAtRoute("GetBookingById", new { id = booking.Id }, new ApiResult<Booking>
             {

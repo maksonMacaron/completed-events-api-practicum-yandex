@@ -1,87 +1,92 @@
-using System.Collections.Concurrent;
+using EventsAPI.DataAccess;
 using EventsAPI.Exceptions;
 using EventsAPI.Models;
+using Microsoft.EntityFrameworkCore;
 
-namespace EventsAPI.Services
+namespace EventsAPI.Services;
+
+/// <summary>Сервис для работы с бронированиями.</summary>
+public class BookingService : IBookingService
 {
-    /// <summary>Сервис для работы с бронированиями.</summary>
-    public class BookingService : IBookingService
+    private static readonly SemaphoreSlim BookingLock = new(1, 1);
+
+    private readonly AppDbContext _context;
+
+    public BookingService(AppDbContext context)
     {
-        private readonly IEventService _eventService;
-        private readonly ConcurrentDictionary<Guid, Booking> _bookings = new();
-        private readonly object _bookingLock = new();
+        _context = context;
+    }
 
-        /// <summary>Создаёт сервис бронирований.</summary>
-        /// <param name="eventService">Сервис для проверки существования мероприятий.</param>
-        public BookingService(IEventService eventService)
+    public async Task<Booking> CreateBookingAsync(
+        Guid eventId,
+        CancellationToken cancellationToken = default)
+    {
+        await BookingLock.WaitAsync(cancellationToken);
+        try
         {
-            _eventService = eventService;
+            var eventItem = await _context.Events
+                .FirstOrDefaultAsync(item => item.Id == eventId, cancellationToken)
+                ?? throw new KeyNotFoundException($"Событие по Id [{eventId}] не найдено");
+
+            if (!eventItem.TryReserveSeats())
+                throw new NoAvailableSeatsException();
+
+            var booking = new Booking(eventId);
+            await _context.Bookings.AddAsync(booking, cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            return booking;
         }
-
-        /// <inheritdoc />
-        public Task<Booking> CreateBookingAsync(Guid eventId)
+        finally
         {
-            lock (_bookingLock)
-            {
-                var eventItem = _eventService.GetById(eventId);
-                if (!eventItem.TryReserveSeats())
-                    throw new NoAvailableSeatsException();
-
-                var booking = new Booking(eventId);
-                _bookings.TryAdd(booking.Id, booking);
-
-                return Task.FromResult(booking);
-            }
-        }
-
-        /// <inheritdoc />
-        public Task<Booking> GetBookingByIdAsync(Guid bookingId)
-        {
-            if (!_bookings.TryGetValue(bookingId, out var booking))
-                throw new KeyNotFoundException($"Бронь по Id [{bookingId}] не найдена");
-
-            return Task.FromResult(booking);
-        }
-
-        /// <inheritdoc />
-        public IReadOnlyList<Booking> GetPendingBookings() =>
-            _bookings.Values.Where(booking => booking.Status == BookingStatus.Pending).ToList();
-
-        /// <inheritdoc />
-        public void ConfirmBooking(Guid bookingId)
-        {
-            lock (_bookingLock)
-            {
-                if (!_bookings.TryGetValue(bookingId, out var booking))
-                    throw new KeyNotFoundException($"Бронь по Id [{bookingId}] не найдена");
-
-                if (booking.Status == BookingStatus.Pending)
-                    booking.Confirm();
-            }
-        }
-
-        /// <inheritdoc />
-        public void RejectBooking(Guid bookingId)
-        {
-            lock (_bookingLock)
-            {
-                if (!_bookings.TryGetValue(bookingId, out var booking))
-                    throw new KeyNotFoundException($"Бронь по Id [{bookingId}] не найдена");
-
-                if (booking.Status != BookingStatus.Pending)
-                    return;
-
-                try
-                {
-                    _eventService.GetById(booking.EventId).ReleaseSeats();
-                }
-                catch (KeyNotFoundException)
-                {
-                    // Событие могло быть удалено во время фоновой обработки.
-                }
-
-                booking.Reject();
-            }
+            BookingLock.Release();
         }
     }
+
+    public async Task<Booking> GetBookingByIdAsync(
+        Guid bookingId,
+        CancellationToken cancellationToken = default) =>
+        await _context.Bookings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(booking => booking.Id == bookingId, cancellationToken)
+        ?? throw new KeyNotFoundException($"Бронь по Id [{bookingId}] не найдена");
+
+    public async Task<IReadOnlyList<Booking>> GetPendingBookingsAsync(
+        CancellationToken cancellationToken = default) =>
+        await _context.Bookings
+            .AsNoTracking()
+            .Where(booking => booking.Status == BookingStatus.Pending)
+            .ToListAsync(cancellationToken);
+
+    public async Task ConfirmBookingAsync(
+        Guid bookingId,
+        CancellationToken cancellationToken = default)
+    {
+        var booking = await FindByIdAsync(bookingId, cancellationToken);
+        if (booking.Status != BookingStatus.Pending)
+            return;
+
+        booking.Confirm();
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task RejectBookingAsync(
+        Guid bookingId,
+        CancellationToken cancellationToken = default)
+    {
+        var booking = await FindByIdAsync(bookingId, cancellationToken);
+        if (booking.Status != BookingStatus.Pending)
+            return;
+
+        var eventItem = await _context.Events
+            .FirstOrDefaultAsync(item => item.Id == booking.EventId, cancellationToken);
+        eventItem?.ReleaseSeats();
+
+        booking.Reject();
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<Booking> FindByIdAsync(Guid bookingId, CancellationToken cancellationToken) =>
+        await _context.Bookings.FirstOrDefaultAsync(booking => booking.Id == bookingId, cancellationToken)
+        ?? throw new KeyNotFoundException($"Бронь по Id [{bookingId}] не найдена");
 }

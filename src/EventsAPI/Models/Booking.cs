@@ -8,19 +8,27 @@ namespace EventsAPI.Models;
 public class Booking
 {
     /// <summary>Уникальный идентификатор брони.</summary>
-    public Guid Id { get; }
+    public Guid Id { get; private set; }
 
     /// <summary>Идентификатор мероприятия, к которому относится бронь.</summary>
-    public Guid EventId { get; }
+    public Guid EventId { get; private set; }
 
     /// <summary>Текущий статус брони.</summary>
     public BookingStatus Status { get; private set; }
 
     /// <summary>Дата и время создания брони в UTC.</summary>
-    public DateTime CreatedAt { get; }
+    public DateTime CreatedAt { get; private set; }
 
     /// <summary>Дата и время обработки брони в UTC; отсутствует до обработки.</summary>
     public DateTime? ProcessedAt { get; private set; }
+
+    /// <summary>Мероприятие, к которому относится бронь.</summary>
+    [JsonIgnore]
+    public Event Event { get; private set; } = null!;
+
+    private Booking()
+    {
+    }
 
     /// <summary>Создаёт бронь в статусе ожидания.</summary>
     /// <param name="eventId">Идентификатор мероприятия.</param>
