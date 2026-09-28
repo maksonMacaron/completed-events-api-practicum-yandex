@@ -1,8 +1,10 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using EventsAPI.Application.DTOs;
+using EventsAPI.Domain.Entities;
 using EventsAPI.Presentation.Contracts.Responses;
 
 namespace EventsAPI.HttpTests;
@@ -24,6 +26,7 @@ public sealed class EventsApiTests : IClassFixture<EventsApiFactory>
     [Fact]
     public async Task CreateEvent_ValidRequest_ReturnsCreatedResponse()
     {
+        await AuthenticateAsync(UserRole.Admin);
         var request = CreateEventRequest(10);
 
         var response = await _client.PostAsJsonAsync("/events", request);
@@ -45,6 +48,7 @@ public sealed class EventsApiTests : IClassFixture<EventsApiFactory>
     [Fact]
     public async Task CreateEvent_MissingTotalSeats_ReturnsValidationResponse()
     {
+        await AuthenticateAsync(UserRole.Admin);
         var request = new
         {
             Title = $"Событие {Guid.NewGuid()}",
@@ -77,10 +81,12 @@ public sealed class EventsApiTests : IClassFixture<EventsApiFactory>
     [Fact]
     public async Task CreateBooking_WhenSeatsAreOver_ReturnsConflictResponse()
     {
+        await AuthenticateAsync(UserRole.Admin);
         var createResponse = await _client.PostAsJsonAsync("/events", CreateEventRequest(1));
         var created = await createResponse.Content.ReadFromJsonAsync<ApiResult<EventInfo>>(JsonOptions);
         Assert.NotNull(created?.Data);
 
+        await AuthenticateAsync(UserRole.User);
         var firstResponse = await _client.PostAsync($"/events/{created.Data.Id}/book", null);
         var secondResponse = await _client.PostAsync($"/events/{created.Data.Id}/book", null);
         var result = await secondResponse.Content.ReadFromJsonAsync<ApiResult>(JsonOptions);
@@ -90,6 +96,91 @@ public sealed class EventsApiTests : IClassFixture<EventsApiFactory>
         Assert.NotNull(result);
         Assert.False(result.Success);
         Assert.Equal(HttpStatusCode.Conflict, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateEvent_WithoutToken_ReturnsUnauthorized()
+    {
+        _client.DefaultRequestHeaders.Authorization = null;
+
+        var response = await _client.PostAsJsonAsync("/events", CreateEventRequest(10));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateEvent_UserToken_ReturnsForbidden()
+    {
+        await AuthenticateAsync(UserRole.User);
+
+        var response = await _client.PostAsJsonAsync("/events", CreateEventRequest(10));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateBooking_WithoutToken_ReturnsUnauthorized()
+    {
+        await AuthenticateAsync(UserRole.Admin);
+        var createResponse = await _client.PostAsJsonAsync("/events", CreateEventRequest(1));
+        var created = await createResponse.Content.ReadFromJsonAsync<ApiResult<EventInfo>>(JsonOptions);
+        Assert.NotNull(created?.Data);
+        _client.DefaultRequestHeaders.Authorization = null;
+
+        var response = await _client.PostAsync($"/events/{created.Data.Id}/book", null);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CancelBooking_OtherUserIsForbidden_AdminCanCancel()
+    {
+        var adminToken = await AuthenticateAsync(UserRole.Admin);
+        var createResponse = await _client.PostAsJsonAsync("/events", CreateEventRequest(1));
+        var created = await createResponse.Content.ReadFromJsonAsync<ApiResult<EventInfo>>(JsonOptions);
+        Assert.NotNull(created?.Data);
+
+        await AuthenticateAsync(UserRole.User);
+        var bookingResponse = await _client.PostAsync($"/events/{created.Data.Id}/book", null);
+        var booking = await bookingResponse.Content.ReadFromJsonAsync<ApiResult<BookingDto>>(JsonOptions);
+        Assert.NotNull(booking?.Data);
+
+        await AuthenticateAsync(UserRole.User);
+        var forbiddenResponse = await _client.DeleteAsync($"/bookings/{booking.Data.Id}");
+        Assert.Equal(HttpStatusCode.Forbidden, forbiddenResponse.StatusCode);
+
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            adminToken);
+        var adminResponse = await _client.DeleteAsync($"/bookings/{booking.Data.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, adminResponse.StatusCode);
+    }
+
+    private async Task<string> AuthenticateAsync(UserRole role)
+    {
+        var login = $"user-{Guid.NewGuid():N}";
+        const string password = "password";
+        var registerResponse = await _client.PostAsJsonAsync("/auth/register", new RegisterUser
+        {
+            Login = login,
+            Password = password,
+            Role = role
+        });
+        Assert.Equal(HttpStatusCode.NoContent, registerResponse.StatusCode);
+
+        var loginResponse = await _client.PostAsJsonAsync("/auth/login", new LoginUser
+        {
+            Login = login,
+            Password = password
+        });
+        var result = await loginResponse.Content.ReadFromJsonAsync<ApiResult<AuthToken>>(JsonOptions);
+        Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);
+        Assert.NotNull(result?.Data);
+
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            result.Data.Token);
+        return result.Data.Token;
     }
 
     private static CreateEvent CreateEventRequest(int totalSeats)

@@ -94,7 +94,7 @@ public sealed class EventServiceTests : IDisposable
 
     internal static CreateEvent NewCreateEvent(string title, int daysFromNow = 1, int seats = 100)
     {
-        var startAt = DateTime.UtcNow.AddDays(daysFromNow);
+        var startAt = TestServices.UtcNow.UtcDateTime.AddDays(daysFromNow);
         return new CreateEvent
         {
             Title = title,

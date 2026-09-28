@@ -84,7 +84,7 @@ public sealed class BookingProcessingServiceTests : IDisposable
         var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
         var eventInfo = await eventService.CreateEventAsync(
             EventServiceTests.NewCreateEvent($"Событие {Guid.NewGuid()}"));
-        return (await bookingService.CreateBookingAsync(eventInfo.Id)).Id;
+        return (await bookingService.CreateBookingAsync(eventInfo.Id, TestServices.UserId)).Id;
     }
 
     private async Task<BookingDto> WaitForBookingStatusAsync(Guid bookingId, BookingStatus status)

@@ -64,8 +64,14 @@ namespace EventsAPI.Presentation.Middlewares
             ex switch
             {
                 DomainValidationException => StatusCodes.Status400BadRequest,
+                PastEventBookingException => StatusCodes.Status400BadRequest,
+                InvalidCredentialsException => StatusCodes.Status400BadRequest,
+                UserAlreadyExistsException => StatusCodes.Status400BadRequest,
                 KeyNotFoundException => StatusCodes.Status404NotFound,
                 NoAvailableSeatsException => StatusCodes.Status409Conflict,
+                ActiveBookingLimitExceededException => StatusCodes.Status409Conflict,
+                ForbiddenOperationException => StatusCodes.Status403Forbidden,
+                UnauthorizedAccessException => StatusCodes.Status401Unauthorized,
                 _ => StatusCodes.Status500InternalServerError
             };
     }

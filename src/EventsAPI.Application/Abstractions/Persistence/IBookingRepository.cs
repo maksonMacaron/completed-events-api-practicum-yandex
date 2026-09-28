@@ -14,6 +14,9 @@ public interface IBookingRepository
     Task<IReadOnlyList<Booking>> GetPendingAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Booking>> GetPendingWithEventsAsync(
         CancellationToken cancellationToken = default);
+    Task<int> CountActiveByUserIdAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
     Task UpdateAsync(Booking booking, CancellationToken cancellationToken = default);
     Task DeleteAsync(Booking booking, CancellationToken cancellationToken = default);
 }

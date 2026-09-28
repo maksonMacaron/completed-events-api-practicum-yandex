@@ -1,3 +1,5 @@
+using EventsAPI.Domain.Exceptions;
+
 namespace EventsAPI.Domain.Entities;
 
 /// <summary>
@@ -11,6 +13,9 @@ public class Booking
     /// <summary>Идентификатор мероприятия, к которому относится бронь.</summary>
     public Guid EventId { get; private set; }
 
+    /// <summary>Идентификатор пользователя, создавшего бронь.</summary>
+    public Guid UserId { get; private set; }
+
     /// <summary>Текущий статус брони.</summary>
     public BookingStatus Status { get; private set; }
 
@@ -23,22 +28,30 @@ public class Booking
     /// <summary>Мероприятие, к которому относится бронь.</summary>
     public Event Event { get; private set; } = null!;
 
+    /// <summary>Пользователь, создавший бронь.</summary>
+    public User User { get; private set; } = null!;
+
     private Booking()
     {
     }
 
     /// <summary>Создаёт бронь в статусе ожидания.</summary>
     /// <param name="eventId">Идентификатор мероприятия.</param>
-    /// <exception cref="ArgumentException">Идентификатор мероприятия пустой.</exception>
-    public Booking(Guid eventId, TimeProvider timeProvider)
+    /// <param name="userId">Идентификатор пользователя.</param>
+    /// <exception cref="ArgumentException">Один из идентификаторов пустой.</exception>
+    public Booking(Guid eventId, Guid userId, TimeProvider timeProvider)
     {
         if (eventId == Guid.Empty)
             throw new ArgumentException("Идентификатор мероприятия не может быть пустым", nameof(eventId));
+
+        if (userId == Guid.Empty)
+            throw new ArgumentException("Идентификатор пользователя не может быть пустым", nameof(userId));
 
         ArgumentNullException.ThrowIfNull(timeProvider);
 
         Id = Guid.NewGuid();
         EventId = eventId;
+        UserId = userId;
         Status = BookingStatus.Pending;
         CreatedAt = timeProvider.GetUtcNow().UtcDateTime;
     }
@@ -60,6 +73,21 @@ public class Booking
         Status = BookingStatus.Rejected;
         ProcessedAt = timeProvider.GetUtcNow().UtcDateTime;
     }
+
+    /// <summary>Отменяет активную бронь и фиксирует время отмены.</summary>
+    public void Cancel(TimeProvider timeProvider)
+    {
+        ArgumentNullException.ThrowIfNull(timeProvider);
+
+        if (Status == BookingStatus.Cancelled)
+            throw new DomainValidationException("Бронь уже отменена");
+
+        if (Status == BookingStatus.Rejected)
+            throw new DomainValidationException("Отклонённую бронь нельзя отменить");
+
+        Status = BookingStatus.Cancelled;
+        ProcessedAt = timeProvider.GetUtcNow().UtcDateTime;
+    }
 }
 
 /// <summary>Состояние обработки брони.</summary>
@@ -70,5 +98,7 @@ public enum BookingStatus
     /// <summary>Бронь подтверждена.</summary>
     Confirmed,
     /// <summary>Бронь отклонена.</summary>
-    Rejected
+    Rejected,
+    /// <summary>Бронь отменена пользователем или администратором.</summary>
+    Cancelled
 }

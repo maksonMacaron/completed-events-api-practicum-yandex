@@ -21,9 +21,13 @@ public sealed class BookingRepositoryTests
         // Arrange
         await _fixture.ResetDatabaseAsync();
         var eventItem = CreateEvent();
-        var booking = new Booking(eventItem.Id, Clock);
+        var user = CreateUser("booking-owner");
+        var booking = new Booking(eventItem.Id, user.Id, Clock);
         await using (var arrangeContext = _fixture.CreateContext())
+        {
             await new EventRepository(arrangeContext).AddAsync(eventItem);
+            await new UserRepository(arrangeContext).AddAsync(user);
+        }
 
         await using (var context = _fixture.CreateContext())
         {
@@ -48,7 +52,7 @@ public sealed class BookingRepositoryTests
         await _fixture.ResetDatabaseAsync();
         await using var context = _fixture.CreateContext();
         var repository = new BookingRepository(context);
-        var booking = new Booking(Guid.NewGuid(), Clock);
+        var booking = new Booking(Guid.NewGuid(), Guid.NewGuid(), Clock);
 
         // Act
         var action = () => repository.AddAsync(booking);
@@ -126,14 +130,16 @@ public sealed class BookingRepositoryTests
         // Arrange
         await _fixture.ResetDatabaseAsync();
         var eventItem = CreateEvent();
-        var first = new Booking(eventItem.Id, Clock);
-        var second = new Booking(eventItem.Id, Clock);
-        var confirmed = new Booking(eventItem.Id, Clock);
+        var user = CreateUser("pending-owner");
+        var first = new Booking(eventItem.Id, user.Id, Clock);
+        var second = new Booking(eventItem.Id, user.Id, Clock);
+        var confirmed = new Booking(eventItem.Id, user.Id, Clock);
         confirmed.Confirm(Clock);
 
         await using (var arrangeContext = _fixture.CreateContext())
         {
             await new EventRepository(arrangeContext).AddAsync(eventItem);
+            await new UserRepository(arrangeContext).AddAsync(user);
             var repository = new BookingRepository(arrangeContext);
             await repository.AddAsync(first);
             await repository.AddAsync(second);
@@ -158,10 +164,12 @@ public sealed class BookingRepositoryTests
     private async Task<Booking> CreateBookingAsync()
     {
         var eventItem = CreateEvent();
-        var booking = new Booking(eventItem.Id, Clock);
+        var user = CreateUser($"owner-{Guid.NewGuid():N}");
+        var booking = new Booking(eventItem.Id, user.Id, Clock);
 
         await using var context = _fixture.CreateContext();
         await new EventRepository(context).AddAsync(eventItem);
+        await new UserRepository(context).AddAsync(user);
         await new BookingRepository(context).AddAsync(booking);
         return booking;
     }
@@ -171,4 +179,7 @@ public sealed class BookingRepositoryTests
         var start = new DateTime(2027, 2, 1, 10, 0, 0, DateTimeKind.Utc);
         return Event.Create("Тестовое событие", null, start, start.AddHours(2), 10);
     }
+
+    private static User CreateUser(string login) =>
+        new(login, new string('A', 64), UserRole.User);
 }

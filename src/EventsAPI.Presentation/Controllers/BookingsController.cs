@@ -1,6 +1,9 @@
+using System.IdentityModel.Tokens.Jwt;
 using EventsAPI.Application.DTOs;
 using EventsAPI.Application.Services;
+using EventsAPI.Domain.Entities;
 using EventsAPI.Presentation.Contracts.Responses;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EventsAPI.Presentation.Controllers;
@@ -8,6 +11,7 @@ namespace EventsAPI.Presentation.Controllers;
 /// <summary>Контроллер для работы с бронированиями.</summary>
 [Route("bookings")]
 [ApiController]
+[Authorize]
 public class BookingsController : ControllerBase
 {
     private readonly IBookingService _bookingService;
@@ -36,5 +40,31 @@ public class BookingsController : ControllerBase
             Success = true,
             DateTime = _timeProvider.GetUtcNow().UtcDateTime
         });
+    }
+
+    /// <summary>Отменить бронирование.</summary>
+    [HttpDelete("{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> CancelBookingAsync(
+        [FromRoute] Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        await _bookingService.CancelBookingAsync(
+            id,
+            GetCurrentUserId(),
+            User.IsInRole(nameof(UserRole.Admin)),
+            cancellationToken);
+
+        return NoContent();
+    }
+
+    private Guid GetCurrentUserId()
+    {
+        var value = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+        return Guid.TryParse(value, out var userId)
+            ? userId
+            : throw new UnauthorizedAccessException("Идентификатор пользователя отсутствует в токене");
     }
 }
