@@ -17,6 +17,14 @@ public interface IBookingRepository
     Task<int> CountActiveByUserIdAsync(
         Guid userId,
         CancellationToken cancellationToken = default);
+    Task<bool> TryConfirmPendingAsync(
+        Guid bookingId,
+        DateTime processedAt,
+        CancellationToken cancellationToken = default);
+    Task<bool> TryRejectPendingAsync(
+        Guid bookingId,
+        DateTime processedAt,
+        CancellationToken cancellationToken = default);
     Task UpdateAsync(Booking booking, CancellationToken cancellationToken = default);
     Task DeleteAsync(Booking booking, CancellationToken cancellationToken = default);
 }

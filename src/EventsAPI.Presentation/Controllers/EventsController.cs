@@ -1,8 +1,8 @@
-using System.IdentityModel.Tokens.Jwt;
 using EventsAPI.Application.DTOs;
 using EventsAPI.Application.Services;
 using EventsAPI.Domain.Entities;
 using EventsAPI.Presentation.Contracts.Responses;
+using EventsAPI.Presentation.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -139,6 +139,7 @@ public class EventsController : ControllerBase
     [HttpPost("{id:guid}/book")]
     [Authorize]
     [ProducesResponseType(typeof(ApiResult<BookingDto>), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> CreateBookingAsync(
@@ -147,7 +148,7 @@ public class EventsController : ControllerBase
     {
         var booking = await _bookingService.CreateBookingAsync(
             id,
-            GetCurrentUserId(),
+            User.GetUserId(),
             cancellationToken);
 
         return AcceptedAtRoute(
@@ -164,12 +165,4 @@ public class EventsController : ControllerBase
     }
 
     private DateTime GetUtcNow() => _timeProvider.GetUtcNow().UtcDateTime;
-
-    private Guid GetCurrentUserId()
-    {
-        var value = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
-        return Guid.TryParse(value, out var userId)
-            ? userId
-            : throw new UnauthorizedAccessException("Идентификатор пользователя отсутствует в токене");
-    }
 }

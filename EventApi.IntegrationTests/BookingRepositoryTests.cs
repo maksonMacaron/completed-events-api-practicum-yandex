@@ -103,6 +103,40 @@ public sealed class BookingRepositoryTests
     }
 
     [Fact]
+    public async Task TryConfirmPendingAsync_CancelledBooking_DoesNotChangeStatus()
+    {
+        // Arrange
+        await _fixture.ResetDatabaseAsync();
+        var booking = await CreateBookingAsync();
+        await using (var cancellationContext = _fixture.CreateContext())
+        {
+            var repository = new BookingRepository(cancellationContext);
+            var saved = await repository.GetByIdAsync(booking.Id, trackChanges: true);
+            Assert.NotNull(saved);
+            saved.Cancel(Clock);
+            await repository.UpdateAsync(saved);
+        }
+
+        await using (var processingContext = _fixture.CreateContext())
+        {
+            var repository = new BookingRepository(processingContext);
+
+            // Act
+            var confirmed = await repository.TryConfirmPendingAsync(
+                booking.Id,
+                DateTime.UtcNow);
+
+            // Assert
+            Assert.False(confirmed);
+        }
+
+        await using var assertContext = _fixture.CreateContext();
+        var result = await new BookingRepository(assertContext).GetByIdAsync(booking.Id);
+        Assert.NotNull(result);
+        Assert.Equal(BookingStatus.Cancelled, result.Status);
+    }
+
+    [Fact]
     public async Task DeleteAsync_DeletesBooking()
     {
         // Arrange
