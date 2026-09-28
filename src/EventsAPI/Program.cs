@@ -1,6 +1,7 @@
 using AutoMapper;
 using EventsAPI.Contracts.Responses;
 using EventsAPI.DataAccess;
+using EventsAPI.DataAccess.Repositories;
 using EventsAPI.Mapping;
 using EventsAPI.Middlewares;
 using EventsAPI.Services;
@@ -22,8 +23,16 @@ builder.Services.AddSwaggerGen(options =>
     options.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, xmlFilename));
 });
 builder.Services.AddAutoMapper(cfg => { }, typeof(EventProfile));
+
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+if (string.IsNullOrWhiteSpace(connectionString))
+    throw new InvalidOperationException(
+        "Строка подключения ConnectionStrings:DefaultConnection не задана");
+
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(connectionString));
+builder.Services.AddScoped<IEventRepository, EventRepository>();
+builder.Services.AddScoped<IBookingRepository, BookingRepository>();
 builder.Services.AddScoped<IEventService, EventService>();
 builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddHostedService<BookingProcessingService>();
@@ -48,10 +57,15 @@ builder.Services.AddControllers().ConfigureApiBehaviorOptions(options =>
 
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
+try
 {
+    using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.EnsureCreated();
+    db.Database.Migrate();
+}
+catch (Exception exception)
+{
+    app.Logger.LogCritical(exception, "Не удалось применить миграции базы данных");
 }
 
 app.UseMiddleware<GlobalExceptionHandlingMiddleware>();

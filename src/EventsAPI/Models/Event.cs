@@ -43,8 +43,6 @@ namespace EventsAPI.Models
         [System.Text.Json.Serialization.JsonIgnore]
         public ICollection<Booking> Bookings { get; private set; } = [];
 
-        private readonly object _seatsLock = new();
-
         private Event()
         {
             Title = null!;
@@ -87,14 +85,11 @@ namespace EventsAPI.Models
             if (count <= 0)
                 throw new ArgumentOutOfRangeException(nameof(count), "Количество мест должно быть больше нуля");
 
-            lock (_seatsLock)
-            {
-                if (AvailableSeats < count)
-                    return false;
+            if (AvailableSeats < count)
+                return false;
 
-                AvailableSeats -= count;
-                return true;
-            }
+            AvailableSeats -= count;
+            return true;
         }
 
         /// <summary>Освобождает указанное количество ранее зарезервированных мест.</summary>
@@ -103,10 +98,7 @@ namespace EventsAPI.Models
             if (count <= 0)
                 throw new ArgumentOutOfRangeException(nameof(count), "Количество мест должно быть больше нуля");
 
-            lock (_seatsLock)
-            {
-                AvailableSeats = Math.Min(TotalSeats, AvailableSeats + count);
-            }
+            AvailableSeats = Math.Min(TotalSeats, AvailableSeats + count);
         }
     }
 }

@@ -83,7 +83,7 @@ namespace EventsAPI.Controllers
         /// <param name="id">Идентификатор мероприятия.</param>
         /// <param name="cancellationToken">Токен отмены запроса.</param>
         /// <returns>Найденное мероприятие или ошибка 404, если мероприятие не существует.</returns>
-        [HttpGet("{id}")]
+        [HttpGet("{id:guid}", Name = "GetEventById")]
         public async Task<IActionResult> GetByIdAsync(
             [FromRoute] Guid id,
             CancellationToken cancellationToken = default)
@@ -111,8 +111,8 @@ namespace EventsAPI.Controllers
         {
             var eventInfo = await _eventService.CreateEventAsync(createEvent, cancellationToken);
 
-            return CreatedAtAction(
-                "GetById",
+            return CreatedAtRoute(
+                "GetEventById",
                 new { id = eventInfo.Id },
                 new ApiResult<EventInfo>
                 {

@@ -1,21 +1,28 @@
-using EventsAPI.DataAccess;
+using EventsAPI.DataAccess.Repositories;
 using EventsAPI.Models;
-using Microsoft.EntityFrameworkCore;
 
 namespace EventsAPI.Services;
 
 /// <summary>Периодически обрабатывает ожидающие бронирования.</summary>
 public class BookingProcessingService : BackgroundService
 {
+    private const int DefaultMaxDegreeOfParallelism = 10;
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BookingProcessingService> _logger;
     private readonly TimeSpan _pollInterval;
     private readonly TimeSpan _processingDelay;
+    private readonly SemaphoreSlim _processingSlots;
 
     public BookingProcessingService(
         IServiceScopeFactory scopeFactory,
         ILogger<BookingProcessingService> logger)
-        : this(scopeFactory, logger, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2))
+        : this(
+            scopeFactory,
+            logger,
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(2),
+            DefaultMaxDegreeOfParallelism)
     {
     }
 
@@ -23,12 +30,17 @@ public class BookingProcessingService : BackgroundService
         IServiceScopeFactory scopeFactory,
         ILogger<BookingProcessingService> logger,
         TimeSpan pollInterval,
-        TimeSpan processingDelay)
+        TimeSpan processingDelay,
+        int maxDegreeOfParallelism = DefaultMaxDegreeOfParallelism)
     {
+        if (maxDegreeOfParallelism <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maxDegreeOfParallelism));
+
         _scopeFactory = scopeFactory;
         _logger = logger;
         _pollInterval = pollInterval;
         _processingDelay = processingDelay;
+        _processingSlots = new SemaphoreSlim(maxDegreeOfParallelism, maxDegreeOfParallelism);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -43,7 +55,12 @@ public class BookingProcessingService : BackgroundService
                 try
                 {
                     var pendingIds = await GetPendingBookingIdsAsync(stoppingToken);
-                    await Task.WhenAll(pendingIds.Select(id => ProcessBookingAsync(id, stoppingToken)));
+                    await Task.WhenAll(pendingIds.Select(id =>
+                        ProcessBookingWithLimitAsync(id, stoppingToken)));
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -57,15 +74,32 @@ public class BookingProcessingService : BackgroundService
         }
     }
 
+    public override void Dispose()
+    {
+        _processingSlots.Dispose();
+        base.Dispose();
+    }
+
     private async Task<List<Guid>> GetPendingBookingIdsAsync(CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var bookingRepository = scope.ServiceProvider.GetRequiredService<IBookingRepository>();
+        return (await bookingRepository.GetPendingIdsAsync(cancellationToken)).ToList();
+    }
 
-        return await context.Bookings
-            .Where(booking => booking.Status == BookingStatus.Pending)
-            .Select(booking => booking.Id)
-            .ToListAsync(cancellationToken);
+    private async Task ProcessBookingWithLimitAsync(
+        Guid bookingId,
+        CancellationToken cancellationToken)
+    {
+        await _processingSlots.WaitAsync(cancellationToken);
+        try
+        {
+            await ProcessBookingAsync(bookingId, cancellationToken);
+        }
+        finally
+        {
+            _processingSlots.Release();
+        }
     }
 
     private async Task ProcessBookingAsync(Guid bookingId, CancellationToken cancellationToken)
@@ -75,24 +109,26 @@ public class BookingProcessingService : BackgroundService
             await Task.Delay(_processingDelay, cancellationToken);
 
             using var scope = _scopeFactory.CreateScope();
-            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var booking = await context.Bookings
-                .FirstOrDefaultAsync(item => item.Id == bookingId, cancellationToken);
+            var bookingRepository = scope.ServiceProvider.GetRequiredService<IBookingRepository>();
+            var eventRepository = scope.ServiceProvider.GetRequiredService<IEventRepository>();
+            var booking = await bookingRepository.GetByIdAsync(
+                bookingId,
+                trackChanges: true,
+                cancellationToken);
 
             if (booking is null || booking.Status != BookingStatus.Pending)
                 return;
 
-            var eventExists = await context.Events
-                .AnyAsync(item => item.Id == booking.EventId, cancellationToken);
+            var eventExists = await eventRepository.ExistsAsync(booking.EventId, cancellationToken);
             if (!eventExists)
             {
                 booking.Reject();
-                await context.SaveChangesAsync(cancellationToken);
+                await bookingRepository.UpdateAsync(booking, cancellationToken);
                 return;
             }
 
             booking.Confirm();
-            await context.SaveChangesAsync(cancellationToken);
+            await bookingRepository.UpdateAsync(booking, cancellationToken);
             _logger.LogInformation("Бронь {BookingId} подтверждена", booking.Id);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -112,17 +148,22 @@ public class BookingProcessingService : BackgroundService
         try
         {
             using var scope = _scopeFactory.CreateScope();
-            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var booking = await context.Bookings
-                .FirstOrDefaultAsync(item => item.Id == bookingId, cancellationToken);
+            var bookingRepository = scope.ServiceProvider.GetRequiredService<IBookingRepository>();
+            var eventRepository = scope.ServiceProvider.GetRequiredService<IEventRepository>();
+            var booking = await bookingRepository.GetByIdAsync(
+                bookingId,
+                trackChanges: true,
+                cancellationToken);
 
             if (booking is not null && booking.Status == BookingStatus.Pending)
             {
                 booking.Reject();
-                var eventItem = await context.Events
-                    .FirstOrDefaultAsync(item => item.Id == booking.EventId, cancellationToken);
+                var eventItem = await eventRepository.GetByIdAsync(
+                    booking.EventId,
+                    trackChanges: true,
+                    cancellationToken);
                 eventItem?.ReleaseSeats();
-                await context.SaveChangesAsync(cancellationToken);
+                await bookingRepository.UpdateAsync(booking, cancellationToken);
             }
 
             _logger.LogError(exception, "Бронь {BookingId} отклонена из-за ошибки", bookingId);
