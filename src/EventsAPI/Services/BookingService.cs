@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using EventsAPI.DataAccess.Repositories;
 using EventsAPI.Exceptions;
 using EventsAPI.Models;
@@ -7,7 +8,7 @@ namespace EventsAPI.Services;
 /// <summary>Сервис для работы с бронированиями.</summary>
 public class BookingService : IBookingService
 {
-    private static readonly SemaphoreSlim BookingLock = new(1, 1);
+    private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> BookingLocks = new();
 
     private readonly IEventRepository _eventRepository;
     private readonly IBookingRepository _bookingRepository;
@@ -24,7 +25,8 @@ public class BookingService : IBookingService
         Guid eventId,
         CancellationToken cancellationToken = default)
     {
-        await BookingLock.WaitAsync(cancellationToken);
+        var bookingLock = BookingLocks.GetOrAdd(eventId, _ => new SemaphoreSlim(1, 1));
+        await bookingLock.WaitAsync(cancellationToken);
         try
         {
             var eventItem = await _eventRepository.GetByIdAsync(
@@ -43,7 +45,7 @@ public class BookingService : IBookingService
         }
         finally
         {
-            BookingLock.Release();
+            bookingLock.Release();
         }
     }
 

@@ -6,15 +6,23 @@ namespace EventsAPI.Services;
 /// <summary>Периодически обрабатывает ожидающие бронирования.</summary>
 public class BookingProcessingService : BackgroundService
 {
+    private const int DefaultMaxDegreeOfParallelism = 10;
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BookingProcessingService> _logger;
     private readonly TimeSpan _pollInterval;
     private readonly TimeSpan _processingDelay;
+    private readonly SemaphoreSlim _processingSlots;
 
     public BookingProcessingService(
         IServiceScopeFactory scopeFactory,
         ILogger<BookingProcessingService> logger)
-        : this(scopeFactory, logger, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2))
+        : this(
+            scopeFactory,
+            logger,
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(2),
+            DefaultMaxDegreeOfParallelism)
     {
     }
 
@@ -22,12 +30,17 @@ public class BookingProcessingService : BackgroundService
         IServiceScopeFactory scopeFactory,
         ILogger<BookingProcessingService> logger,
         TimeSpan pollInterval,
-        TimeSpan processingDelay)
+        TimeSpan processingDelay,
+        int maxDegreeOfParallelism = DefaultMaxDegreeOfParallelism)
     {
+        if (maxDegreeOfParallelism <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maxDegreeOfParallelism));
+
         _scopeFactory = scopeFactory;
         _logger = logger;
         _pollInterval = pollInterval;
         _processingDelay = processingDelay;
+        _processingSlots = new SemaphoreSlim(maxDegreeOfParallelism, maxDegreeOfParallelism);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -42,7 +55,12 @@ public class BookingProcessingService : BackgroundService
                 try
                 {
                     var pendingIds = await GetPendingBookingIdsAsync(stoppingToken);
-                    await Task.WhenAll(pendingIds.Select(id => ProcessBookingAsync(id, stoppingToken)));
+                    await Task.WhenAll(pendingIds.Select(id =>
+                        ProcessBookingWithLimitAsync(id, stoppingToken)));
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -56,11 +74,32 @@ public class BookingProcessingService : BackgroundService
         }
     }
 
+    public override void Dispose()
+    {
+        _processingSlots.Dispose();
+        base.Dispose();
+    }
+
     private async Task<List<Guid>> GetPendingBookingIdsAsync(CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
         var bookingRepository = scope.ServiceProvider.GetRequiredService<IBookingRepository>();
         return (await bookingRepository.GetPendingIdsAsync(cancellationToken)).ToList();
+    }
+
+    private async Task ProcessBookingWithLimitAsync(
+        Guid bookingId,
+        CancellationToken cancellationToken)
+    {
+        await _processingSlots.WaitAsync(cancellationToken);
+        try
+        {
+            await ProcessBookingAsync(bookingId, cancellationToken);
+        }
+        finally
+        {
+            _processingSlots.Release();
+        }
     }
 
     private async Task ProcessBookingAsync(Guid bookingId, CancellationToken cancellationToken)

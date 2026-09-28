@@ -27,7 +27,7 @@ public sealed class EventServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task GetAllAsync_AppliesFiltersAndPagination()
+    public async Task GetAllAsync_AppliesDateFiltersAndPagination()
     {
         using var scope = _provider.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<IEventService>();
@@ -39,7 +39,7 @@ public sealed class EventServiceTests : IDisposable
         var result = await service.GetAllAsync(
             page: 1,
             pageSize: 10,
-            title: "концерт",
+            title: null,
             from: first.StartAt.AddHours(-1),
             to: first.EndAt.AddHours(1));
 

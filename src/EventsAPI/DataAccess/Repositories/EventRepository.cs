@@ -34,8 +34,8 @@ public sealed class EventRepository : IEventRepository
 
         if (!string.IsNullOrWhiteSpace(title))
         {
-            var normalizedTitle = title.ToLower();
-            query = query.Where(item => item.Title.ToLower().Contains(normalizedTitle));
+            var titlePattern = $"%{title}%";
+            query = query.Where(item => EF.Functions.ILike(item.Title, titlePattern));
         }
 
         if (from.HasValue)
