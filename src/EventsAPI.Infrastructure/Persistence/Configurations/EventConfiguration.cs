@@ -12,6 +12,9 @@ internal sealed class EventConfiguration : IEntityTypeConfiguration<Event>
 
         builder.HasKey(item => item.Id);
 
+        builder.HasIndex(item => item.StartAt);
+        builder.HasIndex(item => item.EndAt);
+
         builder.Property(item => item.Id)
             .HasColumnName("id")
             .ValueGeneratedNever();

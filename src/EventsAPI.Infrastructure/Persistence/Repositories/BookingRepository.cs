@@ -41,18 +41,26 @@ public sealed class BookingRepository : IBookingRepository
             .Where(booking => booking.Status == BookingStatus.Pending)
             .ToListAsync(cancellationToken);
 
-    public async Task<IReadOnlyList<Guid>> GetPendingIdsAsync(
+    public async Task<IReadOnlyList<Booking>> GetPendingWithEventsAsync(
         CancellationToken cancellationToken = default) =>
         await _context.Bookings
+            .AsNoTracking()
+            .Include(booking => booking.Event)
             .Where(booking => booking.Status == BookingStatus.Pending)
-            .Select(booking => booking.Id)
             .ToListAsync(cancellationToken);
 
     public async Task UpdateAsync(
         Booking booking,
         CancellationToken cancellationToken = default)
     {
-        _context.Bookings.Update(booking);
+        var entry = _context.Entry(booking);
+        if (entry.State == EntityState.Detached)
+        {
+            _context.Bookings.Attach(booking);
+            entry.Property(item => item.Status).IsModified = true;
+            entry.Property(item => item.ProcessedAt).IsModified = true;
+        }
+
         await _context.SaveChangesAsync(cancellationToken);
     }
 

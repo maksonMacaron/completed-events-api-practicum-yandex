@@ -12,6 +12,8 @@ internal sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
 
         builder.HasKey(booking => booking.Id);
 
+        builder.HasIndex(booking => booking.Status);
+
         builder.Property(booking => booking.Id)
             .HasColumnName("id")
             .ValueGeneratedNever();

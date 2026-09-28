@@ -36,6 +36,7 @@ public static class DependencyInjection
     {
         using var scope = services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        await dbContext.Database.MigrateAsync(cancellationToken);
+        if (dbContext.Database.IsRelational())
+            await dbContext.Database.MigrateAsync(cancellationToken);
     }
 }

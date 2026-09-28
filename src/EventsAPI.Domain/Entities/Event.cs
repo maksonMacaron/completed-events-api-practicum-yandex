@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using EventsAPI.Domain.Exceptions;
 
 namespace EventsAPI.Domain.Entities
 {
@@ -10,7 +10,7 @@ namespace EventsAPI.Domain.Entities
         /// <summary>
         /// Уникальный идентификатор мероприятия.
         /// </summary>
-        public Guid Id { get; set; }
+        public Guid Id { get; private set; }
 
         /// <summary>
         /// Название мероприятия.
@@ -59,7 +59,7 @@ namespace EventsAPI.Domain.Entities
             ValidateDetails(title, startAt, endAt);
 
             if (totalSeats <= 0)
-                throw new ValidationException("Количество мест должно быть больше нуля");
+                throw new DomainValidationException("Количество мест должно быть больше нуля");
 
             Id = Guid.NewGuid();
             Title = title;
@@ -118,13 +118,13 @@ namespace EventsAPI.Domain.Entities
         private static void ValidateDetails(string title, DateTime startAt, DateTime endAt)
         {
             if (string.IsNullOrWhiteSpace(title))
-                throw new ValidationException("Название события обязательно для заполнения");
+                throw new DomainValidationException("Название события обязательно для заполнения");
 
             if (title.Length is < 3 or > 100)
-                throw new ValidationException("Название события должно быть от 3 до 100 символов");
+                throw new DomainValidationException("Название события должно быть от 3 до 100 символов");
 
             if (startAt >= endAt)
-                throw new ValidationException("Дата окончания должна быть позже даты начала");
+                throw new DomainValidationException("Дата окончания должна быть позже даты начала");
         }
     }
 }

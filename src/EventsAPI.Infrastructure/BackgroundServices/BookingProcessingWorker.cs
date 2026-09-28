@@ -1,4 +1,5 @@
 using EventsAPI.Application.Services;
+using EventsAPI.Domain.Entities;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -56,9 +57,9 @@ public sealed class BookingProcessingWorker : BackgroundService
             {
                 try
                 {
-                    var pendingIds = await GetPendingBookingIdsAsync(stoppingToken);
-                    await Task.WhenAll(pendingIds.Select(id =>
-                        ProcessBookingWithLimitAsync(id, stoppingToken)));
+                    var pendingBookings = await GetPendingBookingsAsync(stoppingToken);
+                    await Task.WhenAll(pendingBookings.Select(booking =>
+                        ProcessBookingWithLimitAsync(booking, stoppingToken)));
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
@@ -82,22 +83,22 @@ public sealed class BookingProcessingWorker : BackgroundService
         base.Dispose();
     }
 
-    private async Task<IReadOnlyList<Guid>> GetPendingBookingIdsAsync(
+    private async Task<IReadOnlyList<Booking>> GetPendingBookingsAsync(
         CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<IBookingProcessingService>();
-        return await service.GetPendingBookingIdsAsync(cancellationToken);
+        return await service.GetPendingBookingsAsync(cancellationToken);
     }
 
     private async Task ProcessBookingWithLimitAsync(
-        Guid bookingId,
+        Booking booking,
         CancellationToken cancellationToken)
     {
         await _processingSlots.WaitAsync(cancellationToken);
         try
         {
-            await ProcessBookingAsync(bookingId, cancellationToken);
+            await ProcessBookingAsync(booking, cancellationToken);
         }
         finally
         {
@@ -106,7 +107,7 @@ public sealed class BookingProcessingWorker : BackgroundService
     }
 
     private async Task ProcessBookingAsync(
-        Guid bookingId,
+        Booking booking,
         CancellationToken cancellationToken)
     {
         try
@@ -115,20 +116,20 @@ public sealed class BookingProcessingWorker : BackgroundService
 
             using var scope = _scopeFactory.CreateScope();
             var service = scope.ServiceProvider.GetRequiredService<IBookingProcessingService>();
-            await service.ProcessBookingAsync(bookingId, cancellationToken);
-            _logger.LogInformation("Бронь {BookingId} обработана", bookingId);
+            await service.ProcessBookingAsync(booking, cancellationToken);
+            _logger.LogInformation("Бронь {BookingId} обработана", booking.Id);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
         catch (Exception exception)
         {
-            await RejectAfterFailureAsync(bookingId, exception, cancellationToken);
+            await RejectAfterFailureAsync(booking, exception, cancellationToken);
         }
     }
 
     private async Task RejectAfterFailureAsync(
-        Guid bookingId,
+        Booking booking,
         Exception exception,
         CancellationToken cancellationToken)
     {
@@ -136,12 +137,12 @@ public sealed class BookingProcessingWorker : BackgroundService
         {
             using var scope = _scopeFactory.CreateScope();
             var service = scope.ServiceProvider.GetRequiredService<IBookingProcessingService>();
-            await service.RejectAfterFailureAsync(bookingId, cancellationToken);
-            _logger.LogError(exception, "Бронь {BookingId} отклонена из-за ошибки", bookingId);
+            await service.RejectAfterFailureAsync(booking, cancellationToken);
+            _logger.LogError(exception, "Бронь {BookingId} отклонена из-за ошибки", booking.Id);
         }
         catch (Exception rejectionException)
         {
-            _logger.LogError(rejectionException, "Не удалось отклонить бронь {BookingId}", bookingId);
+            _logger.LogError(rejectionException, "Не удалось отклонить бронь {BookingId}", booking.Id);
         }
     }
 }

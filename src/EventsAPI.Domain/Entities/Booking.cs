@@ -30,29 +30,35 @@ public class Booking
     /// <summary>Создаёт бронь в статусе ожидания.</summary>
     /// <param name="eventId">Идентификатор мероприятия.</param>
     /// <exception cref="ArgumentException">Идентификатор мероприятия пустой.</exception>
-    public Booking(Guid eventId)
+    public Booking(Guid eventId, TimeProvider timeProvider)
     {
         if (eventId == Guid.Empty)
             throw new ArgumentException("Идентификатор мероприятия не может быть пустым", nameof(eventId));
 
+        ArgumentNullException.ThrowIfNull(timeProvider);
+
         Id = Guid.NewGuid();
         EventId = eventId;
         Status = BookingStatus.Pending;
-        CreatedAt = DateTime.UtcNow;
+        CreatedAt = timeProvider.GetUtcNow().UtcDateTime;
     }
 
     /// <summary>Подтверждает бронь и фиксирует время обработки.</summary>
-    public void Confirm()
+    public void Confirm(TimeProvider timeProvider)
     {
+        ArgumentNullException.ThrowIfNull(timeProvider);
+
         Status = BookingStatus.Confirmed;
-        ProcessedAt = DateTime.UtcNow;
+        ProcessedAt = timeProvider.GetUtcNow().UtcDateTime;
     }
 
     /// <summary>Отклоняет бронь и фиксирует время обработки.</summary>
-    public void Reject()
+    public void Reject(TimeProvider timeProvider)
     {
+        ArgumentNullException.ThrowIfNull(timeProvider);
+
         Status = BookingStatus.Rejected;
-        ProcessedAt = DateTime.UtcNow;
+        ProcessedAt = timeProvider.GetUtcNow().UtcDateTime;
     }
 }
 

@@ -1,16 +1,18 @@
+using EventsAPI.Domain.Entities;
+
 namespace EventsAPI.Application.Services;
 
 /// <summary>Операции фоновой обработки ожидающих бронирований.</summary>
 public interface IBookingProcessingService
 {
-    Task<IReadOnlyList<Guid>> GetPendingBookingIdsAsync(
+    Task<IReadOnlyList<Booking>> GetPendingBookingsAsync(
         CancellationToken cancellationToken = default);
 
     Task ProcessBookingAsync(
-        Guid bookingId,
+        Booking booking,
         CancellationToken cancellationToken = default);
 
     Task RejectAfterFailureAsync(
-        Guid bookingId,
+        Booking booking,
         CancellationToken cancellationToken = default);
 }

@@ -40,7 +40,11 @@ builder.Services.AddControllers()
                 StatusCode = HttpStatusCode.BadRequest,
                 Success = false,
                 Errors = errors,
-                Message = "Ошибка валидации"
+                Message = "Ошибка валидации",
+                DateTime = context.HttpContext.RequestServices
+                    .GetRequiredService<TimeProvider>()
+                    .GetUtcNow()
+                    .UtcDateTime
             };
 
             return new BadRequestObjectResult(response);
@@ -71,3 +75,5 @@ app.UseHttpsRedirection();
 app.MapControllers();
 
 app.Run();
+
+public partial class Program;

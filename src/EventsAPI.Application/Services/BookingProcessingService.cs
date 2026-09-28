@@ -7,64 +7,54 @@ public sealed class BookingProcessingService : IBookingProcessingService
 {
     private readonly IBookingRepository _bookingRepository;
     private readonly IEventRepository _eventRepository;
+    private readonly TimeProvider _timeProvider;
 
     public BookingProcessingService(
         IBookingRepository bookingRepository,
-        IEventRepository eventRepository)
+        IEventRepository eventRepository,
+        TimeProvider timeProvider)
     {
         _bookingRepository = bookingRepository;
         _eventRepository = eventRepository;
+        _timeProvider = timeProvider;
     }
 
-    public Task<IReadOnlyList<Guid>> GetPendingBookingIdsAsync(
+    public Task<IReadOnlyList<Booking>> GetPendingBookingsAsync(
         CancellationToken cancellationToken = default) =>
-        _bookingRepository.GetPendingIdsAsync(cancellationToken);
+        _bookingRepository.GetPendingWithEventsAsync(cancellationToken);
 
     public async Task ProcessBookingAsync(
-        Guid bookingId,
+        Booking booking,
         CancellationToken cancellationToken = default)
     {
-        var booking = await _bookingRepository.GetByIdAsync(
-            bookingId,
-            trackChanges: true,
-            cancellationToken);
-
-        if (booking is null || booking.Status != BookingStatus.Pending)
+        if (booking.Status != BookingStatus.Pending)
             return;
 
-        var eventExists = await _eventRepository.ExistsAsync(
-            booking.EventId,
-            cancellationToken);
-
-        if (!eventExists)
+        if (booking.Event is null)
         {
-            booking.Reject();
+            booking.Reject(_timeProvider);
             await _bookingRepository.UpdateAsync(booking, cancellationToken);
             return;
         }
 
-        booking.Confirm();
+        booking.Confirm(_timeProvider);
         await _bookingRepository.UpdateAsync(booking, cancellationToken);
     }
 
     public async Task RejectAfterFailureAsync(
-        Guid bookingId,
+        Booking booking,
         CancellationToken cancellationToken = default)
     {
-        var booking = await _bookingRepository.GetByIdAsync(
-            bookingId,
-            trackChanges: true,
-            cancellationToken);
-
-        if (booking is null || booking.Status != BookingStatus.Pending)
+        if (booking.Status != BookingStatus.Pending)
             return;
 
-        booking.Reject();
-        var eventItem = await _eventRepository.GetByIdAsync(
-            booking.EventId,
-            trackChanges: true,
-            cancellationToken);
-        eventItem?.ReleaseSeats();
+        booking.Reject(_timeProvider);
+        if (booking.Event is not null)
+        {
+            booking.Event.ReleaseSeats();
+            await _eventRepository.UpdateAsync(booking.Event, cancellationToken);
+        }
+
         await _bookingRepository.UpdateAsync(booking, cancellationToken);
     }
 }

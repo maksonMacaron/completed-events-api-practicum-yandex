@@ -7,6 +7,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="EventApi.IntegrationTests/EventApi.IntegrationTests.csproj" />
+    <Project Path="EventApi.HttpTests/EventApi.HttpTests.csproj" />
     <Project Path="EventService.Tests/EventService.Tests.csproj" Id="b2f11f2a-3113-4b64-bedc-170ffa83e2d5" />
   </Folder>
   <Folder Name="/Элементы решения/">

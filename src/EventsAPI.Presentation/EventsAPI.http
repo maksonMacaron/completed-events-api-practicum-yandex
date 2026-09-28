@@ -1,6 +1,19 @@
 @EventsAPI_HostAddress = http://localhost:5028
 
-GET {{EventsAPI_HostAddress}}/weatherforecast/
+GET {{EventsAPI_HostAddress}}/events?page=1&pageSize=10
 Accept: application/json
+
+###
+
+POST {{EventsAPI_HostAddress}}/events
+Content-Type: application/json
+
+{
+  "title": "Концерт",
+  "description": "Вечерний концерт",
+  "startAt": "2027-10-01T16:00:00Z",
+  "endAt": "2027-10-01T18:00:00Z",
+  "totalSeats": 100
+}
 
 ###

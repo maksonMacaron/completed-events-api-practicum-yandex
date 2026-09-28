@@ -20,7 +20,7 @@ namespace EventsAPI.Presentation.Contracts.Responses
         /// <summary>
         /// Дата и время формирования ответа в UTC.
         /// </summary>
-        public DateTime DateTime { get; set; } = DateTime.UtcNow;
+        public required DateTime DateTime { get; set; }
 
         /// <summary>
         /// Дополнительное сообщение ответа.

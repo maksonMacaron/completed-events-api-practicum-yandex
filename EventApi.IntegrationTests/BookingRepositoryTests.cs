@@ -7,6 +7,7 @@ namespace EventsAPI.IntegrationTests;
 [Collection(PostgreSqlCollection.Name)]
 public sealed class BookingRepositoryTests
 {
+    private static readonly TimeProvider Clock = TimeProvider.System;
     private readonly PostgreSqlFixture _fixture;
 
     public BookingRepositoryTests(PostgreSqlFixture fixture)
@@ -20,7 +21,7 @@ public sealed class BookingRepositoryTests
         // Arrange
         await _fixture.ResetDatabaseAsync();
         var eventItem = CreateEvent();
-        var booking = new Booking(eventItem.Id);
+        var booking = new Booking(eventItem.Id, Clock);
         await using (var arrangeContext = _fixture.CreateContext())
             await new EventRepository(arrangeContext).AddAsync(eventItem);
 
@@ -47,7 +48,7 @@ public sealed class BookingRepositoryTests
         await _fixture.ResetDatabaseAsync();
         await using var context = _fixture.CreateContext();
         var repository = new BookingRepository(context);
-        var booking = new Booking(Guid.NewGuid());
+        var booking = new Booking(Guid.NewGuid(), Clock);
 
         // Act
         var action = () => repository.AddAsync(booking);
@@ -83,7 +84,7 @@ public sealed class BookingRepositoryTests
             var repository = new BookingRepository(context);
             var saved = await repository.GetByIdAsync(booking.Id, trackChanges: true);
             Assert.NotNull(saved);
-            saved.Confirm();
+            saved.Confirm(Clock);
 
             // Act
             await repository.UpdateAsync(saved);
@@ -125,10 +126,10 @@ public sealed class BookingRepositoryTests
         // Arrange
         await _fixture.ResetDatabaseAsync();
         var eventItem = CreateEvent();
-        var first = new Booking(eventItem.Id);
-        var second = new Booking(eventItem.Id);
-        var confirmed = new Booking(eventItem.Id);
-        confirmed.Confirm();
+        var first = new Booking(eventItem.Id, Clock);
+        var second = new Booking(eventItem.Id, Clock);
+        var confirmed = new Booking(eventItem.Id, Clock);
+        confirmed.Confirm(Clock);
 
         await using (var arrangeContext = _fixture.CreateContext())
         {
@@ -144,18 +145,20 @@ public sealed class BookingRepositoryTests
 
         // Act
         var pending = await bookingRepository.GetPendingAsync();
-        var pendingIds = await bookingRepository.GetPendingIdsAsync();
+        var pendingWithEvents = await bookingRepository.GetPendingWithEventsAsync();
 
         // Assert
         var expectedIds = new[] { first.Id, second.Id }.OrderBy(id => id);
         Assert.Equal(expectedIds, pending.Select(item => item.Id).OrderBy(id => id));
-        Assert.Equal(expectedIds, pendingIds.OrderBy(id => id));
+        Assert.Equal(expectedIds, pendingWithEvents.Select(item => item.Id).OrderBy(id => id));
+        Assert.All(pendingWithEvents, item => Assert.Equal(eventItem.Id, item.Event.Id));
+        Assert.Empty(context.ChangeTracker.Entries());
     }
 
     private async Task<Booking> CreateBookingAsync()
     {
         var eventItem = CreateEvent();
-        var booking = new Booking(eventItem.Id);
+        var booking = new Booking(eventItem.Id, Clock);
 
         await using var context = _fixture.CreateContext();
         await new EventRepository(context).AddAsync(eventItem);

@@ -50,6 +50,8 @@ namespace EventsAPI.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("EventId");
 
+                    b.HasIndex("Status");
+
                     b.ToTable("bookings", (string)null);
                 });
 
@@ -87,6 +89,10 @@ namespace EventsAPI.Infrastructure.Persistence.Migrations
                         .HasColumnName("total_seats");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("EndAt");
+
+                    b.HasIndex("StartAt");
 
                     b.ToTable("events", (string)null);
                 });

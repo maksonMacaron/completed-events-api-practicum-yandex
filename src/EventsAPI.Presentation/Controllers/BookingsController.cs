@@ -11,10 +11,12 @@ namespace EventsAPI.Presentation.Controllers;
 public class BookingsController : ControllerBase
 {
     private readonly IBookingService _bookingService;
+    private readonly TimeProvider _timeProvider;
 
-    public BookingsController(IBookingService bookingService)
+    public BookingsController(IBookingService bookingService, TimeProvider timeProvider)
     {
         _bookingService = bookingService;
+        _timeProvider = timeProvider;
     }
 
     /// <summary>Получить бронь по идентификатору.</summary>
@@ -31,7 +33,8 @@ public class BookingsController : ControllerBase
             Data = booking,
             Message = $"Бронь по Id [{id}] получена",
             StatusCode = System.Net.HttpStatusCode.OK,
-            Success = true
+            Success = true,
+            DateTime = _timeProvider.GetUtcNow().UtcDateTime
         });
     }
 }

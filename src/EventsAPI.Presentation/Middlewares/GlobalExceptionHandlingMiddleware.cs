@@ -1,4 +1,3 @@
-using System.ComponentModel.DataAnnotations;
 using System.Net;
 using EventsAPI.Domain.Exceptions;
 using EventsAPI.Presentation.Contracts.Responses;
@@ -9,13 +8,16 @@ namespace EventsAPI.Presentation.Middlewares
     {
         private readonly RequestDelegate _next;
         private readonly ILogger<GlobalExceptionHandlingMiddleware> _logger;
+        private readonly TimeProvider _timeProvider;
 
         public GlobalExceptionHandlingMiddleware(
             RequestDelegate next,
-            ILogger<GlobalExceptionHandlingMiddleware> logger)
+            ILogger<GlobalExceptionHandlingMiddleware> logger,
+            TimeProvider timeProvider)
         {
             _next = next;
             _logger = logger;
+            _timeProvider = timeProvider;
         }
 
         public async Task InvokeAsync(HttpContext httpContext)
@@ -40,9 +42,7 @@ namespace EventsAPI.Presentation.Middlewares
                 httpContext.Request.Headers["x-request-id"]);
 
             if (httpContext.Response.HasStarted)
-            {
                 return;
-            }
 
             var statusCode = MapStatusCode(ex);
 
@@ -53,16 +53,17 @@ namespace EventsAPI.Presentation.Middlewares
             {
                 StatusCode = (HttpStatusCode)statusCode,
                 Success = false,
-                Message = ex.Message
+                Message = ex.Message,
+                DateTime = _timeProvider.GetUtcNow().UtcDateTime
             };
 
             await httpContext.Response.WriteAsJsonAsync(error);
         }
 
-        private static int MapStatusCode(Exception ex)
-            => ex switch
+        private static int MapStatusCode(Exception ex) =>
+            ex switch
             {
-                ValidationException => StatusCodes.Status400BadRequest,
+                DomainValidationException => StatusCodes.Status400BadRequest,
                 KeyNotFoundException => StatusCodes.Status404NotFound,
                 NoAvailableSeatsException => StatusCodes.Status409Conflict,
                 _ => StatusCodes.Status500InternalServerError

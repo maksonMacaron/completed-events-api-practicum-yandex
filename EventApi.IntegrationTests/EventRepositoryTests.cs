@@ -108,7 +108,7 @@ public sealed class EventRepositoryTests
         // Arrange
         await _fixture.ResetDatabaseAsync();
         var eventItem = CreateEvent("Выставка", 5);
-        var booking = new Booking(eventItem.Id);
+        var booking = new Booking(eventItem.Id, TimeProvider.System);
         await using (var arrangeContext = _fixture.CreateContext())
         {
             await new EventRepository(arrangeContext).AddAsync(eventItem);

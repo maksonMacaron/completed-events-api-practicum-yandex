@@ -1,4 +1,3 @@
-using System.ComponentModel.DataAnnotations;
 using EventsAPI.Application.Abstractions.Persistence;
 using EventsAPI.Application.DTOs;
 using EventsAPI.Domain.Entities;
@@ -19,15 +18,12 @@ public class EventService : IEventService
         CreateEvent item,
         CancellationToken cancellationToken = default)
     {
-        if (item.TotalSeats is null)
-            throw new ValidationException("Общее количество мест обязательно");
-
         var eventItem = Event.Create(
             item.Title,
             item.Description,
             item.StartAt,
             item.EndAt,
-            item.TotalSeats.Value);
+            item.TotalSeats.GetValueOrDefault());
 
         await _eventRepository.AddAsync(eventItem, cancellationToken);
         return ToInfo(eventItem);

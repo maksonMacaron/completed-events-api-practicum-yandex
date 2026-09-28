@@ -12,15 +12,21 @@ public class EventsController : ControllerBase
 {
     private readonly IEventService _eventService;
     private readonly IBookingService _bookingService;
+    private readonly TimeProvider _timeProvider;
 
-    public EventsController(IEventService eventService, IBookingService bookingService)
+    public EventsController(
+        IEventService eventService,
+        IBookingService bookingService,
+        TimeProvider timeProvider)
     {
         _eventService = eventService;
         _bookingService = bookingService;
+        _timeProvider = timeProvider;
     }
 
     /// <summary>Получить список мероприятий с фильтрацией и пагинацией.</summary>
     [HttpGet]
+    [ProducesResponseType(typeof(ApiResult<PaginatedResult<EventDto>>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAllAsync(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10,
@@ -42,12 +48,15 @@ public class EventsController : ControllerBase
             Data = result,
             Message = $"Список всех событий. Всего {result.Total}",
             StatusCode = System.Net.HttpStatusCode.OK,
-            Success = true
+            Success = true,
+            DateTime = GetUtcNow()
         });
     }
 
     /// <summary>Получить мероприятие по идентификатору.</summary>
     [HttpGet("{id:guid}", Name = "GetEventById")]
+    [ProducesResponseType(typeof(ApiResult<EventDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetByIdAsync(
         [FromRoute] Guid id,
         CancellationToken cancellationToken = default)
@@ -58,12 +67,15 @@ public class EventsController : ControllerBase
             Data = eventItem,
             Message = $"Событие по Id [{id}] получено",
             StatusCode = System.Net.HttpStatusCode.OK,
-            Success = true
+            Success = true,
+            DateTime = GetUtcNow()
         });
     }
 
     /// <summary>Создать новое мероприятие.</summary>
     [HttpPost]
+    [ProducesResponseType(typeof(ApiResult<EventInfo>), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ValidationApiResult), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> CreateAsync(
         [FromBody] CreateEvent createEvent,
         CancellationToken cancellationToken = default)
@@ -78,12 +90,16 @@ public class EventsController : ControllerBase
                 Data = eventInfo,
                 Message = $"Новое событие успешно создано с Id [{eventInfo.Id}]",
                 StatusCode = System.Net.HttpStatusCode.Created,
-                Success = true
+                Success = true,
+                DateTime = GetUtcNow()
             });
     }
 
     /// <summary>Полностью обновить мероприятие по идентификатору.</summary>
     [HttpPut("{id:guid}")]
+    [ProducesResponseType(typeof(ApiResult<EventDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> UpdateAsync(
         [FromRoute] Guid id,
         [FromBody] EventDto eventDto,
@@ -96,12 +112,15 @@ public class EventsController : ControllerBase
             Data = updatedEvent,
             Message = $"Cобытие успешно обновлено по Id [{updatedEvent.Id}]",
             StatusCode = System.Net.HttpStatusCode.OK,
-            Success = true
+            Success = true,
+            DateTime = GetUtcNow()
         });
     }
 
     /// <summary>Удалить мероприятие по идентификатору.</summary>
     [HttpDelete("{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DeleteAsync(
         [FromRoute] Guid id,
         CancellationToken cancellationToken = default)
@@ -129,7 +148,10 @@ public class EventsController : ControllerBase
                 Data = booking,
                 Message = $"Бронь по Id [{booking.Id}] принята в обработку",
                 StatusCode = System.Net.HttpStatusCode.Accepted,
-                Success = true
+                Success = true,
+                DateTime = GetUtcNow()
             });
     }
+
+    private DateTime GetUtcNow() => _timeProvider.GetUtcNow().UtcDateTime;
 }

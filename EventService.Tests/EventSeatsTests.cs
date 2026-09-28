@@ -1,5 +1,5 @@
-using System.ComponentModel.DataAnnotations;
 using EventsAPI.Domain.Entities;
+using EventsAPI.Domain.Exceptions;
 
 namespace EventsAPI.Tests;
 
@@ -17,9 +17,9 @@ public class EventSeatsTests
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
-    public void Create_WithNonPositiveTotalSeats_ThrowsValidationException(int totalSeats)
+    public void Create_WithNonPositiveTotalSeats_ThrowsDomainValidationException(int totalSeats)
     {
-        Assert.Throws<ValidationException>(() => NewEvent(totalSeats));
+        Assert.Throws<DomainValidationException>(() => NewEvent(totalSeats));
     }
 
     [Fact]
@@ -56,12 +56,12 @@ public class EventSeatsTests
     }
 
     [Fact]
-    public void UpdateDetails_WhenEndIsBeforeStart_ThrowsValidationException()
+    public void UpdateDetails_WhenEndIsBeforeStart_ThrowsDomainValidationException()
     {
         var eventItem = NewEvent(2);
         var startAt = DateTime.UtcNow.AddDays(3);
 
-        Assert.Throws<ValidationException>(() => eventItem.UpdateDetails(
+        Assert.Throws<DomainValidationException>(() => eventItem.UpdateDetails(
             "Обновлённый концерт",
             null,
             startAt,
