@@ -22,6 +22,10 @@ internal sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
             .HasColumnName("event_id")
             .IsRequired();
 
+        builder.Property(booking => booking.UserId)
+            .HasColumnName("user_id")
+            .IsRequired();
+
         builder.Property(booking => booking.Status)
             .HasColumnName("status")
             .IsRequired()
@@ -39,5 +43,10 @@ internal sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
             .WithMany(item => item.Bookings)
             .HasForeignKey(booking => booking.EventId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(booking => booking.User)
+            .WithMany(user => user.Bookings)
+            .HasForeignKey(booking => booking.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

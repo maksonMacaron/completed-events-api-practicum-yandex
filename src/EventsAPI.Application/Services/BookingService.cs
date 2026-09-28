@@ -9,6 +9,8 @@ namespace EventsAPI.Application.Services;
 /// <summary>Сервис для работы с бронированиями.</summary>
 public class BookingService : IBookingService
 {
+    public const int ActiveBookingLimit = 10;
+
     private static readonly ConcurrentDictionary<Guid, BookingLock> BookingLocks = new();
 
     private readonly IEventRepository _eventRepository;
@@ -27,19 +29,30 @@ public class BookingService : IBookingService
 
     public async Task<BookingDto> CreateBookingAsync(
         Guid eventId,
+        Guid userId,
         CancellationToken cancellationToken = default)
     {
-        using var bookingLock = await AcquireBookingLockAsync(eventId, cancellationToken);
+        using var userLock = await AcquireBookingLockAsync(userId, cancellationToken);
+        using var eventLock = await AcquireBookingLockAsync(eventId, cancellationToken);
         var eventItem = await _eventRepository.GetByIdAsync(
             eventId,
             trackChanges: true,
             cancellationToken)
             ?? throw new EventNotFoundException(eventId);
 
+        if (eventItem.StartAt <= _timeProvider.GetUtcNow().UtcDateTime)
+            throw new PastEventBookingException();
+
+        var activeBookingsCount = await _bookingRepository.CountActiveByUserIdAsync(
+            userId,
+            cancellationToken);
+        if (activeBookingsCount >= ActiveBookingLimit)
+            throw new ActiveBookingLimitExceededException(ActiveBookingLimit);
+
         if (!eventItem.TryReserveSeats())
             throw new NoAvailableSeatsException();
 
-        var booking = new Booking(eventId, _timeProvider);
+        var booking = new Booking(eventId, userId, _timeProvider);
         await _bookingRepository.AddAsync(booking, cancellationToken);
         return ToDto(booking);
     }
@@ -54,6 +67,34 @@ public class BookingService : IBookingService
             ?? throw new BookingNotFoundException(bookingId);
 
         return ToDto(booking);
+    }
+
+    public async Task CancelBookingAsync(
+        Guid bookingId,
+        Guid userId,
+        bool isAdmin,
+        CancellationToken cancellationToken = default)
+    {
+        using var bookingLock = await AcquireBookingLockAsync(bookingId, cancellationToken);
+        var booking = await FindByIdAsync(bookingId, cancellationToken);
+
+        if (!isAdmin && booking.UserId != userId)
+            throw new ForbiddenOperationException();
+
+        using var eventLock = await AcquireBookingLockAsync(booking.EventId, cancellationToken);
+        var shouldReleaseSeat = booking.Status is BookingStatus.Pending or BookingStatus.Confirmed;
+        booking.Cancel(_timeProvider);
+
+        if (shouldReleaseSeat)
+        {
+            var eventItem = await _eventRepository.GetByIdAsync(
+                booking.EventId,
+                trackChanges: true,
+                cancellationToken);
+            eventItem?.ReleaseSeats();
+        }
+
+        await _bookingRepository.UpdateAsync(booking, cancellationToken);
     }
 
     public async Task<IReadOnlyList<BookingDto>> GetPendingBookingsAsync(
@@ -155,6 +196,7 @@ public class BookingService : IBookingService
     {
         Id = booking.Id,
         EventId = booking.EventId,
+        UserId = booking.UserId,
         Status = booking.Status,
         CreatedAt = booking.CreatedAt,
         ProcessedAt = booking.ProcessedAt

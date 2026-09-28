@@ -1,4 +1,8 @@
+using System.Text;
+using EventsAPI.Application.Abstractions.Authentication;
 using EventsAPI.Application.Abstractions.Persistence;
+using EventsAPI.Application.Authentication;
+using EventsAPI.Infrastructure.Authentication;
 using EventsAPI.Infrastructure.BackgroundServices;
 using EventsAPI.Infrastructure.Persistence;
 using EventsAPI.Infrastructure.Persistence.Repositories;
@@ -25,9 +29,40 @@ public static class DependencyInjection
             options.UseNpgsql(connectionString));
         services.AddScoped<IEventRepository, EventRepository>();
         services.AddScoped<IBookingRepository, BookingRepository>();
+        services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IPasswordHasher, PasswordHasher>();
+        services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
+        services.AddSingleton(CreateJwtSettings(configuration));
         services.AddHostedService<BookingProcessingWorker>();
 
         return services;
+    }
+
+    private static JwtSettings CreateJwtSettings(IConfiguration configuration)
+    {
+        var section = configuration.GetSection(JwtSettings.SectionName);
+        var settings = new JwtSettings
+        {
+            Secret = section[nameof(JwtSettings.Secret)] ?? string.Empty,
+            Issuer = section[nameof(JwtSettings.Issuer)] ?? string.Empty,
+            Audience = section[nameof(JwtSettings.Audience)] ?? string.Empty,
+            LifetimeMinutes = int.TryParse(
+                section[nameof(JwtSettings.LifetimeMinutes)],
+                out var lifetimeMinutes)
+                ? lifetimeMinutes
+                : 0
+        };
+
+        if (string.IsNullOrWhiteSpace(settings.Secret)
+            || Encoding.UTF8.GetByteCount(settings.Secret) < 32
+            || string.IsNullOrWhiteSpace(settings.Issuer)
+            || string.IsNullOrWhiteSpace(settings.Audience)
+            || settings.LifetimeMinutes <= 0)
+        {
+            throw new InvalidOperationException("Параметры JWT в секции Jwt заполнены некорректно");
+        }
+
+        return settings;
     }
 
     public static async Task ApplyInfrastructureMigrationsAsync(

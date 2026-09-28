@@ -27,34 +27,38 @@ public sealed class BookingProcessingService : IBookingProcessingService
         Booking booking,
         CancellationToken cancellationToken = default)
     {
-        if (booking.Status != BookingStatus.Pending)
-            return;
+        var processedAt = _timeProvider.GetUtcNow().UtcDateTime;
 
         if (booking.Event is null)
         {
-            booking.Reject(_timeProvider);
-            await _bookingRepository.UpdateAsync(booking, cancellationToken);
+            await _bookingRepository.TryRejectPendingAsync(
+                booking.Id,
+                processedAt,
+                cancellationToken);
             return;
         }
 
-        booking.Confirm(_timeProvider);
-        await _bookingRepository.UpdateAsync(booking, cancellationToken);
+        await _bookingRepository.TryConfirmPendingAsync(
+            booking.Id,
+            processedAt,
+            cancellationToken);
     }
 
     public async Task RejectAfterFailureAsync(
         Booking booking,
         CancellationToken cancellationToken = default)
     {
-        if (booking.Status != BookingStatus.Pending)
+        var rejected = await _bookingRepository.TryRejectPendingAsync(
+            booking.Id,
+            _timeProvider.GetUtcNow().UtcDateTime,
+            cancellationToken);
+        if (!rejected)
             return;
 
-        booking.Reject(_timeProvider);
         if (booking.Event is not null)
         {
             booking.Event.ReleaseSeats();
             await _eventRepository.UpdateAsync(booking.Event, cancellationToken);
         }
-
-        await _bookingRepository.UpdateAsync(booking, cancellationToken);
     }
 }
