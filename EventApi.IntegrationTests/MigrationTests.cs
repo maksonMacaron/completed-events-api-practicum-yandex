@@ -13,7 +13,7 @@ public sealed class MigrationTests
     }
 
     [Fact]
-    public async Task InitialMigration_CreatesTablesKeysAndConstraints()
+    public async Task Migrations_CreateTablesConstraintsAndQueryIndexes()
     {
         // Arrange
         await _fixture.ResetDatabaseAsync();
@@ -70,11 +70,18 @@ public sealed class MigrationTests
               AND ((table_name = 'events' AND column_name IN ('title', 'start_at', 'end_at', 'total_seats', 'available_seats'))
                 OR (table_name = 'bookings' AND column_name IN ('event_id', 'status', 'created_at')));
             """);
-        var migrationApplied = await ExecuteBoolAsync(connection, """
-            SELECT EXISTS (
-                SELECT 1
-                FROM "__EFMigrationsHistory"
-                WHERE "MigrationId" LIKE '%_InitialCreate');
+        var queryIndexesCount = await ExecuteIntAsync(connection, """
+            SELECT COUNT(*)::int
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND indexname IN ('IX_bookings_status', 'IX_events_start_at', 'IX_events_end_at');
+            """);
+        var appliedMigrationsCount = await ExecuteIntAsync(connection, """
+            SELECT COUNT(*)::int
+            FROM "__EFMigrationsHistory"
+            WHERE "MigrationId" IN (
+                '20260927174014_InitialCreate',
+                '20260928110000_AddQueryIndexes');
             """);
 
         // Assert
@@ -84,7 +91,8 @@ public sealed class MigrationTests
         Assert.True(foreignKeyExists);
         Assert.True(cascadeDeleteConfigured);
         Assert.Equal(8, requiredColumnsCount);
-        Assert.True(migrationApplied);
+        Assert.Equal(3, queryIndexesCount);
+        Assert.Equal(2, appliedMigrationsCount);
     }
 
     private static async Task<bool> ExecuteBoolAsync(NpgsqlConnection connection, string sql)

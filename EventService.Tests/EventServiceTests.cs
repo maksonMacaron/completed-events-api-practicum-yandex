@@ -1,5 +1,6 @@
-using EventsAPI.DTOs;
-using EventsAPI.Services;
+using EventsAPI.Application.DTOs;
+using EventsAPI.Application.Services;
+using EventsAPI.Domain.Exceptions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace EventsAPI.Tests;
@@ -79,7 +80,7 @@ public sealed class EventServiceTests : IDisposable
 
         await service.DeleteAsync(created.Id);
 
-        await Assert.ThrowsAsync<KeyNotFoundException>(() => service.GetByIdAsync(created.Id));
+        await Assert.ThrowsAsync<EventNotFoundException>(() => service.GetByIdAsync(created.Id));
     }
 
     [Fact]
@@ -88,7 +89,7 @@ public sealed class EventServiceTests : IDisposable
         using var scope = _provider.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<IEventService>();
 
-        await Assert.ThrowsAsync<KeyNotFoundException>(() => service.GetByIdAsync(Guid.NewGuid()));
+        await Assert.ThrowsAsync<EventNotFoundException>(() => service.GetByIdAsync(Guid.NewGuid()));
     }
 
     internal static CreateEvent NewCreateEvent(string title, int daysFromNow = 1, int seats = 100)

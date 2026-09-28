@@ -1,5 +1,5 @@
-using EventsAPI.DataAccess.Repositories;
-using EventsAPI.Models;
+using EventsAPI.Domain.Entities;
+using EventsAPI.Infrastructure.Persistence.Repositories;
 
 namespace EventsAPI.IntegrationTests;
 
@@ -85,7 +85,11 @@ public sealed class EventRepositoryTests
             var repository = new EventRepository(context);
             var saved = await repository.GetByIdAsync(eventItem.Id, trackChanges: true);
             Assert.NotNull(saved);
-            saved.Title = "Новое название";
+            saved.UpdateDetails(
+                "Новое название",
+                saved.Description,
+                saved.StartAt,
+                saved.EndAt);
 
             // Act
             await repository.UpdateAsync(saved);
@@ -104,7 +108,7 @@ public sealed class EventRepositoryTests
         // Arrange
         await _fixture.ResetDatabaseAsync();
         var eventItem = CreateEvent("Выставка", 5);
-        var booking = new Booking(eventItem.Id);
+        var booking = new Booking(eventItem.Id, TimeProvider.System);
         await using (var arrangeContext = _fixture.CreateContext())
         {
             await new EventRepository(arrangeContext).AddAsync(eventItem);

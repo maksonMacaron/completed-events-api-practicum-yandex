@@ -1,8 +1,7 @@
 using System.Collections.Concurrent;
-using System.Text.Json;
-using EventsAPI.Exceptions;
-using EventsAPI.Models;
-using EventsAPI.Services;
+using EventsAPI.Application.Services;
+using EventsAPI.Domain.Entities;
+using EventsAPI.Domain.Exceptions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace EventsAPI.Tests;
@@ -21,22 +20,16 @@ public sealed class BookingServiceTests : IDisposable
         var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
         var eventInfo = await eventService.CreateEventAsync(
             EventServiceTests.NewCreateEvent("Концерт"));
-        var before = DateTime.UtcNow;
-
         var booking = await bookingService.CreateBookingAsync(eventInfo.Id);
         var updatedEvent = await eventService.GetByIdAsync(eventInfo.Id);
 
         Assert.NotEqual(Guid.Empty, booking.Id);
         Assert.Equal(eventInfo.Id, booking.EventId);
         Assert.Equal(BookingStatus.Pending, booking.Status);
-        Assert.InRange(booking.CreatedAt, before, DateTime.UtcNow);
+        Assert.Equal(TestServices.UtcNow.UtcDateTime, booking.CreatedAt);
         Assert.Null(booking.ProcessedAt);
         Assert.Equal(99, updatedEvent.AvailableSeats);
 
-        using var json = JsonDocument.Parse(JsonSerializer.Serialize(
-            booking,
-            new JsonSerializerOptions(JsonSerializerDefaults.Web)));
-        Assert.Equal("Pending", json.RootElement.GetProperty("status").GetString());
     }
 
     [Fact]
@@ -45,7 +38,7 @@ public sealed class BookingServiceTests : IDisposable
         using var scope = _provider.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<IBookingService>();
 
-        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+        await Assert.ThrowsAsync<EventNotFoundException>(() =>
             service.CreateBookingAsync(Guid.NewGuid()));
     }
 
@@ -83,9 +76,9 @@ public sealed class BookingServiceTests : IDisposable
         var updatedEvent = await eventService.GetByIdAsync(eventInfo.Id);
 
         Assert.Equal(BookingStatus.Confirmed, confirmedResult.Status);
-        Assert.NotNull(confirmedResult.ProcessedAt);
+        Assert.Equal(TestServices.UtcNow.UtcDateTime, confirmedResult.ProcessedAt);
         Assert.Equal(BookingStatus.Rejected, rejectedResult.Status);
-        Assert.NotNull(rejectedResult.ProcessedAt);
+        Assert.Equal(TestServices.UtcNow.UtcDateTime, rejectedResult.ProcessedAt);
         Assert.Equal(1, updatedEvent.AvailableSeats);
         Assert.Empty(await service.GetPendingBookingsAsync());
     }
