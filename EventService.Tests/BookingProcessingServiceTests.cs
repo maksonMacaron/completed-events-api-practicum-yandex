@@ -1,6 +1,8 @@
 using System.Diagnostics;
-using EventsAPI.Models;
-using EventsAPI.Services;
+using EventsAPI.Application.DTOs;
+using EventsAPI.Application.Services;
+using EventsAPI.Domain.Entities;
+using EventsAPI.Infrastructure.BackgroundServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -69,9 +71,9 @@ public sealed class BookingProcessingServiceTests : IDisposable
         Assert.Equal(BookingStatus.Pending, (await service.GetBookingByIdAsync(bookingId)).Status);
     }
 
-    private BookingProcessingService CreateWorker(TimeSpan processingDelay) => new(
+    private BookingProcessingWorker CreateWorker(TimeSpan processingDelay) => new(
         _provider.GetRequiredService<IServiceScopeFactory>(),
-        NullLogger<BookingProcessingService>.Instance,
+        NullLogger<BookingProcessingWorker>.Instance,
         ShortInterval,
         processingDelay);
 
@@ -85,7 +87,7 @@ public sealed class BookingProcessingServiceTests : IDisposable
         return (await bookingService.CreateBookingAsync(eventInfo.Id)).Id;
     }
 
-    private async Task<Booking> WaitForBookingStatusAsync(Guid bookingId, BookingStatus status)
+    private async Task<BookingDto> WaitForBookingStatusAsync(Guid bookingId, BookingStatus status)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
         while (true)

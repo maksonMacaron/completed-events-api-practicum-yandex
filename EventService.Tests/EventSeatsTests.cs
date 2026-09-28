@@ -1,5 +1,5 @@
 using System.ComponentModel.DataAnnotations;
-using EventsAPI.Models;
+using EventsAPI.Domain.Entities;
 
 namespace EventsAPI.Tests;
 
@@ -53,6 +53,19 @@ public class EventSeatsTests
         eventItem.ReleaseSeats(3);
 
         Assert.Equal(2, eventItem.AvailableSeats);
+    }
+
+    [Fact]
+    public void UpdateDetails_WhenEndIsBeforeStart_ThrowsValidationException()
+    {
+        var eventItem = NewEvent(2);
+        var startAt = DateTime.UtcNow.AddDays(3);
+
+        Assert.Throws<ValidationException>(() => eventItem.UpdateDetails(
+            "Обновлённый концерт",
+            null,
+            startAt,
+            startAt.AddHours(-1)));
     }
 
     private static Event NewEvent(int totalSeats) => Event.Create(

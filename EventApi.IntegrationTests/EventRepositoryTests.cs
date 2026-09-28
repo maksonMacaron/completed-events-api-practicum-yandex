@@ -1,5 +1,5 @@
-using EventsAPI.DataAccess.Repositories;
-using EventsAPI.Models;
+using EventsAPI.Domain.Entities;
+using EventsAPI.Infrastructure.Persistence.Repositories;
 
 namespace EventsAPI.IntegrationTests;
 
@@ -85,7 +85,11 @@ public sealed class EventRepositoryTests
             var repository = new EventRepository(context);
             var saved = await repository.GetByIdAsync(eventItem.Id, trackChanges: true);
             Assert.NotNull(saved);
-            saved.Title = "Новое название";
+            saved.UpdateDetails(
+                "Новое название",
+                saved.Description,
+                saved.StartAt,
+                saved.EndAt);
 
             // Act
             await repository.UpdateAsync(saved);

@@ -21,7 +21,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\src\EventsAPI\EventsAPI.csproj" />
+    <ProjectReference Include="..\src\EventsAPI.Domain\EventsAPI.Domain.csproj" />
+    <ProjectReference Include="..\src\EventsAPI.Infrastructure\EventsAPI.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -26,7 +26,6 @@
 * PostgreSQL
 * EF Core Migrations
 * Testcontainers for .NET
-* AutoMapper
 * Swagger (OpenAPI)
 * xUnit
 
@@ -34,16 +33,30 @@
 
 ## 📦 Структура проекта
 
-* Controllers — обработка HTTP-запросов
-* DataAccess — `AppDbContext`, миграции, репозитории и Fluent API-конфигурации сущностей
-* Services — бизнес-логика
-* Models — доменные модели
-* DTOs — модели для API
-* Contracts/Responses — ответы API
-* Mapping — профили AutoMapper
-* Middlewares — глобальная обработка ошибок
-* EventService.Tests — юнит-тесты
-* EventApi.IntegrationTests — интеграционные тесты репозиториев с PostgreSQL
+Приложение разделено на четыре сборки по принципам Clean Architecture:
+
+* `EventsAPI.Domain` — сущности `Event` и `Booking`, доменные правила и исключения. Слой не зависит от остальных проектов;
+* `EventsAPI.Application` — сценарии приложения, DTO и интерфейсы портов для репозиториев. Зависит только от `Domain`;
+* `EventsAPI.Infrastructure` — `AppDbContext`, EF Core-конфигурации, миграции, реализации репозиториев и фоновый hosted-адаптер. Зависит от `Application` и `Domain`;
+* `EventsAPI.Presentation` — контроллеры, HTTP-контракты, глобальная обработка ошибок и composition root. Зависит от `Application` и `Infrastructure`.
+
+Направление зависимостей:
+
+```text
+Presentation -> Application -> Domain
+       |              ^
+       v              |
+Infrastructure -------+
+       |
+       +---------------------> Domain
+```
+
+Интерфейсы репозиториев объявлены в `Application`, а их EF Core-реализации находятся в `Infrastructure`. Поэтому сценарии приложения не зависят от способа хранения данных.
+
+Тестовые проекты:
+
+* `EventService.Tests` — unit-тесты домена и сценариев приложения с EF Core InMemory;
+* `EventApi.IntegrationTests` — интеграционные тесты репозиториев и миграций с PostgreSQL.
 
 ---
 
@@ -58,7 +71,7 @@ cd events-api-practicum-yandex
 
 ### 2. Подготовить PostgreSQL
 
-Для локального запуска необходим доступный экземпляр PostgreSQL. Среда `Development` использует строку подключения из `src/EventsAPI/appsettings.Development.json`:
+Для локального запуска необходим доступный экземпляр PostgreSQL. Среда `Development` использует строку подключения из `src/EventsAPI.Presentation/appsettings.Development.json`:
 
 ```text
 Host=localhost;Port=5432;Database=eventapi;Username=postgres;Password=postgres
@@ -73,7 +86,7 @@ Host=localhost;Port=5432;Database=eventapi;Username=postgres;Password=postgres
 ### 3. Запустить проект
 
 ```bash
-dotnet run --project src/EventsAPI/EventsAPI.csproj --launch-profile http
+dotnet run --project src/EventsAPI.Presentation/EventsAPI.Presentation.csproj --launch-profile http
 ```
 
 ### Миграции
@@ -81,13 +94,18 @@ dotnet run --project src/EventsAPI/EventsAPI.csproj --launch-profile http
 Создать миграцию после изменения модели:
 
 ```bash
-dotnet ef migrations add MigrationName --project src/EventsAPI/EventsAPI.csproj --startup-project src/EventsAPI/EventsAPI.csproj --output-dir DataAccess/Migrations
+dotnet ef migrations add MigrationName \
+  --project src/EventsAPI.Infrastructure/EventsAPI.Infrastructure.csproj \
+  --startup-project src/EventsAPI.Presentation/EventsAPI.Presentation.csproj \
+  --output-dir Persistence/Migrations
 ```
 
 Применить миграции вручную:
 
 ```bash
-dotnet ef database update --project src/EventsAPI/EventsAPI.csproj --startup-project src/EventsAPI/EventsAPI.csproj
+dotnet ef database update \
+  --project src/EventsAPI.Infrastructure/EventsAPI.Infrastructure.csproj \
+  --startup-project src/EventsAPI.Presentation/EventsAPI.Presentation.csproj
 ```
 
 Для выполнения этих команд нужен инструмент `dotnet-ef` версии, совместимой с EF Core проекта.
@@ -206,8 +224,8 @@ GET /events
 
 В решении есть два тестовых проекта:
 
-* `EventService.Tests` содержит быстрые unit-тесты на EF Core InMemory;
-* `EventApi.IntegrationTests` проверяет миграцию и все методы репозиториев на настоящей PostgreSQL.
+* `EventService.Tests` содержит быстрые unit-тесты доменных правил и Application-сервисов;
+* `EventApi.IntegrationTests` проверяет миграцию и реализации портов на настоящей PostgreSQL.
 
 Интеграционные тесты используют одну PostgreSQL в Testcontainers. Перед каждым тестом база пересоздаётся и к ней заново применяются миграции, поэтому тесты не зависят друг от друга или от порядка запуска. Порт и строка подключения выдаются Testcontainers, захардкоженных настроек подключения нет.
 
