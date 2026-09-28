@@ -77,6 +77,58 @@ public sealed class EventRepository : IEventRepository
     public Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default) =>
         _context.Events.AnyAsync(item => item.Id == id, cancellationToken);
 
+    public async Task<BookingConfirmationResult> ApplyBookingConfirmationAsync(
+        Guid bookingId,
+        Guid eventId,
+        int seats,
+        DateTime confirmedAt,
+        CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+
+        if (await _context.ProcessedBookingMessages.AnyAsync(
+                item => item.BookingId == bookingId,
+                cancellationToken))
+        {
+            return BookingConfirmationResult.AlreadyProcessed;
+        }
+
+        var eventItem = await _context.Events.FirstOrDefaultAsync(
+            item => item.Id == eventId,
+            cancellationToken);
+
+        var result = eventItem switch
+        {
+            null => BookingConfirmationResult.EventNotFound,
+            _ when !eventItem.TryReserveSeats(seats) => BookingConfirmationResult.NotEnoughSeats,
+            _ => BookingConfirmationResult.Applied
+        };
+
+        _context.ProcessedBookingMessages.Add(
+            new ProcessedBookingMessage(bookingId, confirmedAt));
+
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return result;
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            _context.ChangeTracker.Clear();
+
+            if (await _context.ProcessedBookingMessages.AnyAsync(
+                    item => item.BookingId == bookingId,
+                    cancellationToken))
+            {
+                return BookingConfirmationResult.AlreadyProcessed;
+            }
+
+            throw;
+        }
+    }
+
     public async Task UpdateAsync(
         Event eventItem,
         CancellationToken cancellationToken = default)

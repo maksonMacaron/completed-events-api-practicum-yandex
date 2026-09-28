@@ -38,9 +38,6 @@ namespace EventsAPI.Domain.Entities
         /// <summary>Текущее количество свободных мест на мероприятии.</summary>
         public int AvailableSeats { get; private set; }
 
-        /// <summary>Бронирования мероприятия.</summary>
-        public ICollection<Booking> Bookings { get; private set; } = [];
-
         private Event()
         {
             Title = null!;

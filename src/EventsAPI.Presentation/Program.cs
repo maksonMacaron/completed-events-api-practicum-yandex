@@ -5,8 +5,8 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json.Serialization;
 using EventsAPI.Application;
-using EventsAPI.Application.Authentication;
 using EventsAPI.Infrastructure;
+using EventsAPI.Presentation.Authentication;
 using EventsAPI.Presentation.Contracts.Responses;
 using EventsAPI.Presentation.Middlewares;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -41,8 +41,8 @@ builder.Services.AddSwaggerGen(options =>
 builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
 var jwtSettings = builder.Configuration
-    .GetSection(JwtSettings.SectionName)
-    .Get<JwtSettings>()
+    .GetSection(JwtOptions.SectionName)
+    .Get<JwtOptions>()
     ?? throw new InvalidOperationException("Секция Jwt не найдена в конфигурации");
 
 builder.Services
@@ -108,14 +108,9 @@ catch (Exception exception)
 
 app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
 
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
-
-app.UseHttpsRedirection();
+app.MapOpenApi();
+app.UseSwagger();
+app.UseSwaggerUI();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

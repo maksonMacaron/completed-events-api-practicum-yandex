@@ -1,8 +1,6 @@
 using EventsAPI.Application.DTOs;
 using EventsAPI.Application.Services;
-using EventsAPI.Domain.Entities;
 using EventsAPI.Presentation.Contracts.Responses;
-using EventsAPI.Presentation.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,16 +12,13 @@ namespace EventsAPI.Presentation.Controllers;
 public class EventsController : ControllerBase
 {
     private readonly IEventService _eventService;
-    private readonly IBookingService _bookingService;
     private readonly TimeProvider _timeProvider;
 
     public EventsController(
         IEventService eventService,
-        IBookingService bookingService,
         TimeProvider timeProvider)
     {
         _eventService = eventService;
-        _bookingService = bookingService;
         _timeProvider = timeProvider;
     }
 
@@ -77,7 +72,7 @@ public class EventsController : ControllerBase
 
     /// <summary>Создать новое мероприятие.</summary>
     [HttpPost]
-    [Authorize(Roles = nameof(UserRole.Admin))]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ApiResult<EventInfo>), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ValidationApiResult), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> CreateAsync(
@@ -101,7 +96,7 @@ public class EventsController : ControllerBase
 
     /// <summary>Полностью обновить мероприятие по идентификатору.</summary>
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = nameof(UserRole.Admin))]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ApiResult<EventDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationApiResult), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
@@ -124,7 +119,7 @@ public class EventsController : ControllerBase
 
     /// <summary>Удалить мероприятие по идентификатору.</summary>
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = nameof(UserRole.Admin))]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DeleteAsync(
@@ -133,35 +128,6 @@ public class EventsController : ControllerBase
     {
         await _eventService.DeleteAsync(id, cancellationToken);
         return NoContent();
-    }
-
-    /// <summary>Создать бронь для мероприятия.</summary>
-    [HttpPost("{id:guid}/book")]
-    [Authorize]
-    [ProducesResponseType(typeof(ApiResult<BookingDto>), StatusCodes.Status202Accepted)]
-    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
-    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status409Conflict)]
-    public async Task<IActionResult> CreateBookingAsync(
-        [FromRoute] Guid id,
-        CancellationToken cancellationToken = default)
-    {
-        var booking = await _bookingService.CreateBookingAsync(
-            id,
-            User.GetUserId(),
-            cancellationToken);
-
-        return AcceptedAtRoute(
-            "GetBookingById",
-            new { id = booking.Id },
-            new ApiResult<BookingDto>
-            {
-                Data = booking,
-                Message = $"Бронь по Id [{booking.Id}] принята в обработку",
-                StatusCode = System.Net.HttpStatusCode.Accepted,
-                Success = true,
-                DateTime = GetUtcNow()
-            });
     }
 
     private DateTime GetUtcNow() => _timeProvider.GetUtcNow().UtcDateTime;

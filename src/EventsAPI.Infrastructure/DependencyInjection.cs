@@ -1,9 +1,5 @@
-using System.Text;
-using EventsAPI.Application.Abstractions.Authentication;
 using EventsAPI.Application.Abstractions.Persistence;
-using EventsAPI.Application.Authentication;
-using EventsAPI.Infrastructure.Authentication;
-using EventsAPI.Infrastructure.BackgroundServices;
+using EventsAPI.Infrastructure.Messaging;
 using EventsAPI.Infrastructure.Persistence;
 using EventsAPI.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -28,41 +24,29 @@ public static class DependencyInjection
         services.AddDbContext<AppDbContext>(options =>
             options.UseNpgsql(connectionString));
         services.AddScoped<IEventRepository, EventRepository>();
-        services.AddScoped<IBookingRepository, BookingRepository>();
-        services.AddScoped<IUserRepository, UserRepository>();
-        services.AddScoped<IPasswordHasher, PasswordHasher>();
-        services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
-        services.AddSingleton(CreateJwtSettings(configuration));
-        services.AddHostedService<BookingProcessingWorker>();
+        services.AddSingleton(CreateKafkaOptions(configuration));
+        services.AddHostedService<KafkaTopicInitializer>();
+        services.AddHostedService<BookingConfirmedConsumer>();
 
         return services;
     }
 
-    private static JwtSettings CreateJwtSettings(IConfiguration configuration)
+    private static KafkaOptions CreateKafkaOptions(IConfiguration configuration)
     {
-        var section = configuration.GetSection(JwtSettings.SectionName);
-        var settings = new JwtSettings
+        var section = configuration.GetSection(KafkaOptions.SectionName);
+        var options = new KafkaOptions
         {
-            Secret = section[nameof(JwtSettings.Secret)] ?? string.Empty,
-            Issuer = section[nameof(JwtSettings.Issuer)] ?? string.Empty,
-            Audience = section[nameof(JwtSettings.Audience)] ?? string.Empty,
-            LifetimeMinutes = int.TryParse(
-                section[nameof(JwtSettings.LifetimeMinutes)],
-                out var lifetimeMinutes)
-                ? lifetimeMinutes
-                : 0
+            BootstrapServers = section[nameof(KafkaOptions.BootstrapServers)] ?? string.Empty,
+            ConsumerGroup = section[nameof(KafkaOptions.ConsumerGroup)] ?? string.Empty
         };
 
-        if (string.IsNullOrWhiteSpace(settings.Secret)
-            || Encoding.UTF8.GetByteCount(settings.Secret) < 32
-            || string.IsNullOrWhiteSpace(settings.Issuer)
-            || string.IsNullOrWhiteSpace(settings.Audience)
-            || settings.LifetimeMinutes <= 0)
+        if (string.IsNullOrWhiteSpace(options.BootstrapServers)
+            || string.IsNullOrWhiteSpace(options.ConsumerGroup))
         {
-            throw new InvalidOperationException("Параметры JWT в секции Jwt заполнены некорректно");
+            throw new InvalidOperationException("Параметры Kafka заполнены некорректно");
         }
 
-        return settings;
+        return options;
     }
 
     public static async Task ApplyInfrastructureMigrationsAsync(

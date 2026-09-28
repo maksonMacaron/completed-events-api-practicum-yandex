@@ -21,6 +21,20 @@ public interface IEventRepository
         CancellationToken cancellationToken = default);
 
     Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<BookingConfirmationResult> ApplyBookingConfirmationAsync(
+        Guid bookingId,
+        Guid eventId,
+        int seats,
+        DateTime confirmedAt,
+        CancellationToken cancellationToken = default);
     Task UpdateAsync(Event eventItem, CancellationToken cancellationToken = default);
     Task DeleteAsync(Event eventItem, CancellationToken cancellationToken = default);
+}
+
+public enum BookingConfirmationResult
+{
+    Applied,
+    AlreadyProcessed,
+    EventNotFound,
+    NotEnoughSeats
 }
