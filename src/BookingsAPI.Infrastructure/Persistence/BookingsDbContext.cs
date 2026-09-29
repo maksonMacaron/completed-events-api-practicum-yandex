@@ -11,6 +11,7 @@ public sealed class BookingsDbContext : DbContext
 
     public DbSet<Booking> Bookings => Set<Booking>();
     public DbSet<KnownEvent> KnownEvents => Set<KnownEvent>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

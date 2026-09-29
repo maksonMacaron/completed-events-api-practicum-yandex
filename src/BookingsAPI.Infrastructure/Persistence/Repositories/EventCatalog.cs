@@ -26,6 +26,19 @@ public sealed class EventCatalog : IEventCatalog
         DateTime changedAt,
         CancellationToken cancellationToken = default)
     {
+        if (_context.Database.IsNpgsql())
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync($$"""
+                INSERT INTO known_events (event_id, is_available, updated_at)
+                VALUES ({{eventId}}, {{isAvailable}}, {{changedAt}})
+                ON CONFLICT (event_id) DO UPDATE
+                SET is_available = EXCLUDED.is_available,
+                    updated_at = EXCLUDED.updated_at
+                WHERE EXCLUDED.updated_at >= known_events.updated_at
+                """, cancellationToken);
+            return;
+        }
+
         var eventItem = await _context.KnownEvents.FirstOrDefaultAsync(
             item => item.EventId == eventId,
             cancellationToken);
@@ -41,4 +54,11 @@ public sealed class EventCatalog : IEventCatalog
 
         await _context.SaveChangesAsync(cancellationToken);
     }
+
+    public Task<int> RemoveUnavailableBeforeAsync(
+        DateTime threshold,
+        CancellationToken cancellationToken = default) =>
+        _context.KnownEvents
+            .Where(item => !item.IsAvailable && item.UpdatedAt < threshold)
+            .ExecuteDeleteAsync(cancellationToken);
 }

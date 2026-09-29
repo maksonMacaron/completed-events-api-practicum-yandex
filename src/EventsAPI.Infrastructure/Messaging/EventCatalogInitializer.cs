@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Shared.Contracts;
+using Shared.Contracts.Infrastructure;
 
 namespace EventsAPI.Infrastructure.Messaging;
 

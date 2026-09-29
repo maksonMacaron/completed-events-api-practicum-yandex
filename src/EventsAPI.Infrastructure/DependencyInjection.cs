@@ -6,6 +6,7 @@ using EventsAPI.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Shared.Contracts.Infrastructure;
 
 namespace EventsAPI.Infrastructure;
 
@@ -25,7 +26,7 @@ public static class DependencyInjection
         services.AddDbContext<AppDbContext>(options =>
             options.UseNpgsql(connectionString));
         services.AddScoped<IEventRepository, EventRepository>();
-        services.AddSingleton(CreateKafkaOptions(configuration));
+        services.AddSingleton(KafkaOptions.FromConfiguration(configuration));
         services.AddSingleton<IEventAvailabilityPublisher, KafkaEventAvailabilityPublisher>();
         services.AddHostedService<KafkaTopicInitializer>();
         services.AddHostedService<EventCatalogInitializer>();
@@ -33,24 +34,6 @@ public static class DependencyInjection
         services.AddHostedService<BookingCancelledConsumer>();
 
         return services;
-    }
-
-    private static KafkaOptions CreateKafkaOptions(IConfiguration configuration)
-    {
-        var section = configuration.GetSection(KafkaOptions.SectionName);
-        var options = new KafkaOptions
-        {
-            BootstrapServers = section[nameof(KafkaOptions.BootstrapServers)] ?? string.Empty,
-            ConsumerGroup = section[nameof(KafkaOptions.ConsumerGroup)] ?? string.Empty
-        };
-
-        if (string.IsNullOrWhiteSpace(options.BootstrapServers)
-            || string.IsNullOrWhiteSpace(options.ConsumerGroup))
-        {
-            throw new InvalidOperationException("Параметры Kafka заполнены некорректно");
-        }
-
-        return options;
     }
 
     public static async Task ApplyInfrastructureMigrationsAsync(

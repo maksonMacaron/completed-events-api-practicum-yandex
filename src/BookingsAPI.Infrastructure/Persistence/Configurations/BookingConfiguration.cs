@@ -13,7 +13,6 @@ internal sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
         builder.HasIndex(booking => booking.UserId);
         builder.HasIndex(booking => new { booking.Status, booking.ConfirmationPublishedAt });
         builder.HasIndex(booking => new { booking.Status, booking.CancellationPublishedAt });
-        builder.HasIndex(booking => booking.PublicationLockedUntil);
 
         builder.Property(booking => booking.Id)
             .HasColumnName("id")
@@ -45,8 +44,6 @@ internal sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
             .HasColumnName("confirmation_published_at");
         builder.Property(booking => booking.CancellationPublishedAt)
             .HasColumnName("cancellation_published_at");
-        builder.Property(booking => booking.PublicationLockedUntil)
-            .HasColumnName("publication_locked_until");
         builder.Property(booking => booking.SeatReleaseRequired)
             .HasColumnName("seat_release_required")
             .IsRequired();

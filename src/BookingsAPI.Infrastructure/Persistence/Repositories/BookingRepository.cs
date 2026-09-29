@@ -6,15 +6,11 @@ namespace BookingsAPI.Infrastructure.Persistence.Repositories;
 
 public sealed class BookingRepository : IBookingRepository
 {
-    private static readonly TimeSpan PublicationLockDuration = TimeSpan.FromMinutes(5);
-
     private readonly BookingsDbContext _context;
-    private readonly TimeProvider _timeProvider;
 
-    public BookingRepository(BookingsDbContext context, TimeProvider timeProvider)
+    public BookingRepository(BookingsDbContext context)
     {
         _context = context;
-        _timeProvider = timeProvider;
     }
 
     public async Task<Booking> AddAsync(
@@ -38,52 +34,29 @@ public sealed class BookingRepository : IBookingRepository
         return await query.FirstOrDefaultAsync(booking => booking.Id == id, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<Booking>> GetAwaitingPublicationAsync(
-        CancellationToken cancellationToken = default)
-    {
-        await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
-        var now = _timeProvider.GetUtcNow().UtcDateTime;
+    public Task<Booking?> GetByIdForUpdateAsync(
+        Guid id,
+        CancellationToken cancellationToken = default) =>
+        _context.Bookings
+            .FromSqlInterpolated($"SELECT * FROM bookings WHERE id = {id} FOR UPDATE")
+            .SingleOrDefaultAsync(cancellationToken);
 
-        var bookings = await _context.Bookings
-            .FromSqlInterpolated($$"""
+    public async Task<IReadOnlyList<Booking>> GetPendingForUpdateAsync(
+        CancellationToken cancellationToken = default) =>
+        await _context.Bookings
+            .FromSqlRaw(
+                """
                 SELECT *
                 FROM bookings
-                WHERE (
-                    status = 'Pending'
-                    OR (status = 'Confirmed' AND confirmation_published_at IS NULL)
-                    OR (
-                        status = 'Cancelled'
-                        AND seat_release_required
-                        AND (
-                            confirmation_published_at IS NULL
-                            OR cancellation_published_at IS NULL
-                        )
-                    )
-                )
-                AND (
-                    publication_locked_until IS NULL
-                    OR publication_locked_until < {{now}}
-                )
+                WHERE status = 'Pending'
                 ORDER BY created_at
                 LIMIT 20
                 FOR UPDATE SKIP LOCKED
                 """)
             .ToListAsync(cancellationToken);
 
-        var lockedUntil = now.Add(PublicationLockDuration);
-        foreach (var booking in bookings)
-            booking.LockPublication(lockedUntil);
-
-        await _context.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return bookings;
-    }
-
-    public async Task UpdateAsync(
-        Booking booking,
-        CancellationToken cancellationToken = default)
+    public void AddOutboxMessage(OutboxMessage message)
     {
-        _context.Bookings.Update(booking);
-        await _context.SaveChangesAsync(cancellationToken);
+        _context.OutboxMessages.Add(message);
     }
 }

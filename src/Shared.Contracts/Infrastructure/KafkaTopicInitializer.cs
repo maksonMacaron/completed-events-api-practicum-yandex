@@ -2,9 +2,8 @@ using Confluent.Kafka;
 using Confluent.Kafka.Admin;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Shared.Contracts;
 
-namespace EventsAPI.Infrastructure.Messaging;
+namespace Shared.Contracts.Infrastructure;
 
 public sealed class KafkaTopicInitializer : IHostedService
 {
@@ -29,18 +28,17 @@ public sealed class KafkaTopicInitializer : IHostedService
         try
         {
             await adminClient.CreateTopicsAsync(CreateTopicSpecifications());
-
-            _logger.LogInformation("Топики бронирований созданы");
+            _logger.LogInformation("Топики Kafka созданы");
         }
         catch (CreateTopicsException exception)
             when (exception.Results.All(result =>
                 result.Error.Code is ErrorCode.NoError or ErrorCode.TopicAlreadyExists))
         {
-            _logger.LogInformation("Топики бронирований уже существуют");
+            _logger.LogInformation("Топики Kafka уже существуют");
         }
         catch (Exception exception)
         {
-            _logger.LogWarning(exception, "Не удалось проверить или создать топики бронирований");
+            _logger.LogWarning(exception, "Не удалось проверить или создать топики Kafka");
         }
     }
 
@@ -48,23 +46,15 @@ public sealed class KafkaTopicInitializer : IHostedService
 
     private static TopicSpecification[] CreateTopicSpecifications() =>
     [
-        new TopicSpecification
-        {
-            Name = KafkaTopics.BookingConfirmed,
-            NumPartitions = 3,
-            ReplicationFactor = 1
-        },
-        new TopicSpecification
-        {
-            Name = KafkaTopics.BookingCancelled,
-            NumPartitions = 3,
-            ReplicationFactor = 1
-        },
-        new TopicSpecification
-        {
-            Name = KafkaTopics.EventAvailabilityChanged,
-            NumPartitions = 3,
-            ReplicationFactor = 1
-        }
+        CreateTopic(KafkaTopics.BookingConfirmed),
+        CreateTopic(KafkaTopics.BookingCancelled),
+        CreateTopic(KafkaTopics.EventAvailabilityChanged)
     ];
+
+    private static TopicSpecification CreateTopic(string name) => new()
+    {
+        Name = name,
+        NumPartitions = 3,
+        ReplicationFactor = 1
+    };
 }

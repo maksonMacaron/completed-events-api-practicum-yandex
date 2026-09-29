@@ -31,5 +31,11 @@ public sealed class EventCatalogTests
         await catalog.ApplyAsync(eventId, isAvailable: false, createdAt.AddMinutes(1));
 
         Assert.False(await catalog.ExistsAsync(eventId));
+
+        var deletedCount = await catalog.RemoveUnavailableBeforeAsync(
+            createdAt.AddMinutes(2));
+
+        Assert.Equal(1, deletedCount);
+        Assert.Empty(await context.KnownEvents.ToListAsync());
     }
 }

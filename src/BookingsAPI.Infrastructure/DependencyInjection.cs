@@ -7,6 +7,7 @@ using BookingsAPI.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Shared.Contracts.Infrastructure;
 
 namespace BookingsAPI.Infrastructure;
 
@@ -25,32 +26,19 @@ public static class DependencyInjection
 
         services.AddDbContext<BookingsDbContext>(options => options.UseNpgsql(connectionString));
         services.AddScoped<IBookingRepository, BookingRepository>();
+        services.AddScoped<IOutboxRepository, OutboxRepository>();
+        services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IEventCatalog, EventCatalog>();
-        services.AddSingleton(CreateKafkaOptions(configuration));
+        services.AddSingleton(KafkaOptions.FromConfiguration(configuration));
         services.AddSingleton<IBookingConfirmedPublisher, KafkaBookingConfirmedPublisher>();
         services.AddSingleton<IBookingCancelledPublisher, KafkaBookingCancelledPublisher>();
         services.AddHostedService<KafkaTopicInitializer>();
+        services.AddHostedService<EventCatalogBackfillService>();
         services.AddHostedService<EventAvailabilityConsumer>();
+        services.AddHostedService<KnownEventCleanupWorker>();
         services.AddHostedService<BookingProcessingWorker>();
+        services.AddHostedService<OutboxPublisherWorker>();
         return services;
-    }
-
-    private static KafkaOptions CreateKafkaOptions(IConfiguration configuration)
-    {
-        var section = configuration.GetSection(KafkaOptions.SectionName);
-        var options = new KafkaOptions
-        {
-            BootstrapServers = section[nameof(KafkaOptions.BootstrapServers)] ?? string.Empty,
-            ConsumerGroup = section[nameof(KafkaOptions.ConsumerGroup)] ?? string.Empty
-        };
-
-        if (string.IsNullOrWhiteSpace(options.BootstrapServers)
-            || string.IsNullOrWhiteSpace(options.ConsumerGroup))
-        {
-            throw new InvalidOperationException("Параметры Kafka заполнены некорректно");
-        }
-
-        return options;
     }
 
     public static async Task ApplyInfrastructureMigrationsAsync(

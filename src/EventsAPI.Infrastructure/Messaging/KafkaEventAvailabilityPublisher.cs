@@ -2,12 +2,12 @@ using System.Text.Json;
 using Confluent.Kafka;
 using EventsAPI.Application.Abstractions.Messaging;
 using Shared.Contracts;
+using Shared.Contracts.Infrastructure;
 
 namespace EventsAPI.Infrastructure.Messaging;
 
 public sealed class KafkaEventAvailabilityPublisher : IEventAvailabilityPublisher, IDisposable
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
     private readonly IProducer<string, string> _producer;
 
     public KafkaEventAvailabilityPublisher(KafkaOptions options)
@@ -28,7 +28,7 @@ public sealed class KafkaEventAvailabilityPublisher : IEventAvailabilityPublishe
             new Message<string, string>
             {
                 Key = message.EventId.ToString(),
-                Value = JsonSerializer.Serialize(message, SerializerOptions)
+                Value = JsonSerializer.Serialize(message, KafkaJsonSerializer.Options)
             },
             cancellationToken);
 

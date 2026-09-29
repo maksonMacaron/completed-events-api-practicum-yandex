@@ -15,7 +15,6 @@ public sealed class Booking
     public DateTime? CancelledAt { get; private set; }
     public DateTime? ConfirmationPublishedAt { get; private set; }
     public DateTime? CancellationPublishedAt { get; private set; }
-    public DateTime? PublicationLockedUntil { get; private set; }
     public bool SeatReleaseRequired { get; private set; }
 
     private Booking()
@@ -93,15 +92,6 @@ public sealed class Booking
         CancellationPublishedAt = timeProvider.GetUtcNow().UtcDateTime;
     }
 
-    public void LockPublication(DateTime lockedUntil)
-    {
-        PublicationLockedUntil = lockedUntil;
-    }
-
-    public void ReleasePublicationLock()
-    {
-        PublicationLockedUntil = null;
-    }
 }
 
 public enum BookingStatus

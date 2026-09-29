@@ -9,7 +9,10 @@ public interface IBookingRepository
         Guid id,
         bool trackChanges = false,
         CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<Booking>> GetAwaitingPublicationAsync(
+    Task<Booking?> GetByIdForUpdateAsync(
+        Guid id,
         CancellationToken cancellationToken = default);
-    Task UpdateAsync(Booking booking, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Booking>> GetPendingForUpdateAsync(
+        CancellationToken cancellationToken = default);
+    void AddOutboxMessage(OutboxMessage message);
 }

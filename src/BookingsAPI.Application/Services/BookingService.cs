@@ -1,9 +1,10 @@
-using BookingsAPI.Application.Abstractions.Messaging;
+using System.Text.Json;
 using BookingsAPI.Application.Abstractions.Persistence;
 using BookingsAPI.Application.DTOs;
 using BookingsAPI.Domain.Entities;
 using BookingsAPI.Domain.Exceptions;
 using Shared.Contracts;
+using Shared.Contracts.Infrastructure;
 
 namespace BookingsAPI.Application.Services;
 
@@ -11,18 +12,18 @@ public sealed class BookingService : IBookingService
 {
     private readonly IBookingRepository _bookingRepository;
     private readonly IEventCatalog _eventCatalog;
-    private readonly IBookingCancelledPublisher _cancelledPublisher;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly TimeProvider _timeProvider;
 
     public BookingService(
         IBookingRepository bookingRepository,
         IEventCatalog eventCatalog,
-        IBookingCancelledPublisher cancelledPublisher,
+        IUnitOfWork unitOfWork,
         TimeProvider timeProvider)
     {
         _bookingRepository = bookingRepository;
         _eventCatalog = eventCatalog;
-        _cancelledPublisher = cancelledPublisher;
+        _unitOfWork = unitOfWork;
         _timeProvider = timeProvider;
     }
 
@@ -54,36 +55,33 @@ public sealed class BookingService : IBookingService
         bool isAdmin,
         CancellationToken cancellationToken = default)
     {
-        var booking = await _bookingRepository.GetByIdAsync(
-            id,
-            trackChanges: true,
-            cancellationToken)
-            ?? throw new BookingNotFoundException(id);
+        await _unitOfWork.ExecuteAsync(async operationToken =>
+        {
+            var booking = await _bookingRepository.GetByIdForUpdateAsync(id, operationToken)
+                ?? throw new BookingNotFoundException(id);
 
-        if (!isAdmin && booking.UserId != userId)
-            throw new ForbiddenOperationException();
+            if (!isAdmin && booking.UserId != userId)
+                throw new ForbiddenOperationException();
 
-        booking.Cancel(_timeProvider);
-        await _bookingRepository.UpdateAsync(booking, cancellationToken);
+            booking.Cancel(_timeProvider);
+            if (booking.SeatReleaseRequired)
+            {
+                var message = new BookingCancelled(
+                    booking.Id,
+                    booking.EventId,
+                    booking.UserId,
+                    booking.Seats,
+                    booking.CancelledAt!.Value);
 
-        if (!booking.SeatReleaseRequired)
-            return;
+                _bookingRepository.AddOutboxMessage(new OutboxMessage(
+                    booking.Id,
+                    nameof(BookingCancelled),
+                    JsonSerializer.Serialize(message, KafkaJsonSerializer.Options),
+                    message.CancelledAt));
+            }
 
-        if (!booking.ConfirmationPublishedAt.HasValue)
-            return;
-
-        await _cancelledPublisher.PublishAsync(
-            new BookingCancelled(
-                booking.Id,
-                booking.EventId,
-                booking.UserId,
-                booking.Seats,
-                booking.CancelledAt!.Value),
-            cancellationToken);
-
-        booking.MarkCancellationPublished(_timeProvider);
-        booking.ReleasePublicationLock();
-        await _bookingRepository.UpdateAsync(booking, cancellationToken);
+            return booking;
+        }, cancellationToken);
     }
 
     private static BookingDto ToDto(Booking booking) => new()

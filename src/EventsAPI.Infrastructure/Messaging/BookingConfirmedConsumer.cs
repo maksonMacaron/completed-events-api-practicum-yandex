@@ -6,13 +6,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Shared.Contracts;
+using Shared.Contracts.Infrastructure;
 
 namespace EventsAPI.Infrastructure.Messaging;
 
 public sealed class BookingConfirmedConsumer : BackgroundService
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
-
     private readonly KafkaOptions _options;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BookingConfirmedConsumer> _logger;
@@ -62,7 +61,7 @@ public sealed class BookingConfirmedConsumer : BackgroundService
                 {
                     message = JsonSerializer.Deserialize<BookingConfirmed>(
                         result.Message.Value,
-                        SerializerOptions);
+                        KafkaJsonSerializer.Options);
                 }
                 catch (JsonException exception)
                 {

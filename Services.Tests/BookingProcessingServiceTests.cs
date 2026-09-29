@@ -1,4 +1,3 @@
-using BookingsAPI.Application.Abstractions.Messaging;
 using BookingsAPI.Application.Abstractions.Persistence;
 using BookingsAPI.Application.DTOs;
 using BookingsAPI.Application.Services;
@@ -11,94 +10,119 @@ namespace Services.Tests;
 public sealed class BookingProcessingServiceTests
 {
     [Fact]
-    public async Task ProcessAsync_SavesConfirmationBeforePublishing()
+    public async Task PreparePendingAsync_ConfirmsBookingAndAddsOutboxMessage()
     {
-        var timeProvider = new FixedTimeProvider(new DateTimeOffset(2030, 1, 1, 12, 0, 0, TimeSpan.Zero));
+        var timeProvider = CreateTimeProvider();
         var booking = new Booking(Guid.NewGuid(), Guid.NewGuid(), 2, timeProvider);
-        var repository = new BookingRepositoryStub();
-        var publisher = new PublisherStub(repository);
-        var service = new BookingProcessingService(
-            repository,
-            publisher,
-            publisher,
-            timeProvider);
+        var repository = new BookingRepositoryStub { PendingBookings = [booking] };
+        var unitOfWork = new UnitOfWorkStub();
+        var service = new BookingProcessingService(repository, unitOfWork, timeProvider);
 
-        await service.ProcessAsync(booking);
+        var processedCount = await service.PreparePendingAsync();
 
-        Assert.True(publisher.ConfirmationWasPublished);
-        Assert.Equal([1], publisher.ConfirmationUpdateCounts);
-        Assert.Equal(2, repository.UpdateCount);
+        Assert.Equal(1, processedCount);
         Assert.Equal(BookingStatus.Confirmed, booking.Status);
-        Assert.NotNull(booking.ConfirmationPublishedAt);
+        Assert.Single(repository.OutboxMessages);
+        Assert.Equal(nameof(BookingConfirmed), repository.OutboxMessages[0].Type);
+        Assert.Equal(1, unitOfWork.TransactionCount);
     }
 
     [Fact]
-    public async Task CancelAsync_SavesCancellationBeforePublishingCompensation()
+    public async Task CancelAsync_AddsCompensationToSameTransaction()
     {
-        var timeProvider = new FixedTimeProvider(new DateTimeOffset(2030, 1, 1, 12, 0, 0, TimeSpan.Zero));
+        var timeProvider = CreateTimeProvider();
         var booking = new Booking(Guid.NewGuid(), Guid.NewGuid(), 2, timeProvider);
         booking.Confirm(timeProvider);
-        booking.MarkConfirmationPublished(timeProvider);
 
         var repository = new BookingRepositoryStub { BookingToReturn = booking };
-        var publisher = new PublisherStub(repository);
+        var unitOfWork = new UnitOfWorkStub();
         var service = new BookingService(
             repository,
             new EventCatalogStub(eventExists: true),
-            publisher,
+            unitOfWork,
             timeProvider);
 
         await service.CancelAsync(booking.Id, booking.UserId, isAdmin: false);
 
-        Assert.True(publisher.CancellationWasPublished);
-        Assert.Equal([1], publisher.CancellationUpdateCounts);
-        Assert.Equal(2, repository.UpdateCount);
         Assert.Equal(BookingStatus.Cancelled, booking.Status);
-        Assert.NotNull(booking.CancellationPublishedAt);
+        Assert.Single(repository.OutboxMessages);
+        Assert.Equal(nameof(BookingCancelled), repository.OutboxMessages[0].Type);
+        Assert.Equal(1, unitOfWork.TransactionCount);
     }
 
     [Fact]
-    public async Task ProcessAsync_PublishesConfirmationBeforeEarlyCancellation()
+    public async Task CancelAsync_DoesNotCreateCompensationForPendingBooking()
     {
-        var timeProvider = new FixedTimeProvider(new DateTimeOffset(2030, 1, 1, 12, 0, 0, TimeSpan.Zero));
+        var timeProvider = CreateTimeProvider();
+        var booking = new Booking(Guid.NewGuid(), Guid.NewGuid(), 2, timeProvider);
+        var repository = new BookingRepositoryStub { BookingToReturn = booking };
+        var service = new BookingService(
+            repository,
+            new EventCatalogStub(eventExists: true),
+            new UnitOfWorkStub(),
+            timeProvider);
+
+        await service.CancelAsync(booking.Id, booking.UserId, isAdmin: false);
+
+        Assert.Equal(BookingStatus.Cancelled, booking.Status);
+        Assert.Empty(repository.OutboxMessages);
+    }
+
+    [Fact]
+    public async Task CancelAsync_DoesNotCreateDuplicateCancellation()
+    {
+        var timeProvider = CreateTimeProvider();
         var booking = new Booking(Guid.NewGuid(), Guid.NewGuid(), 2, timeProvider);
         booking.Confirm(timeProvider);
-
         var repository = new BookingRepositoryStub { BookingToReturn = booking };
-        var publisher = new PublisherStub(repository);
+        var service = new BookingService(
+            repository,
+            new EventCatalogStub(eventExists: true),
+            new UnitOfWorkStub(),
+            timeProvider);
+
+        await service.CancelAsync(booking.Id, booking.UserId, isAdmin: false);
+
+        await Assert.ThrowsAsync<DomainValidationException>(() =>
+            service.CancelAsync(booking.Id, booking.UserId, isAdmin: false));
+        Assert.Single(repository.OutboxMessages);
+    }
+
+    [Fact]
+    public async Task ConfirmationIsQueuedBeforeCancellation()
+    {
+        var timeProvider = CreateTimeProvider();
+        var booking = new Booking(Guid.NewGuid(), Guid.NewGuid(), 2, timeProvider);
+        var repository = new BookingRepositoryStub
+        {
+            BookingToReturn = booking,
+            PendingBookings = [booking]
+        };
+        var unitOfWork = new UnitOfWorkStub();
+        var processingService = new BookingProcessingService(repository, unitOfWork, timeProvider);
         var bookingService = new BookingService(
             repository,
             new EventCatalogStub(eventExists: true),
-            publisher,
-            timeProvider);
-        var processingService = new BookingProcessingService(
-            repository,
-            publisher,
-            publisher,
+            unitOfWork,
             timeProvider);
 
+        await processingService.PreparePendingAsync();
         await bookingService.CancelAsync(booking.Id, booking.UserId, isAdmin: false);
-        Assert.False(publisher.CancellationWasPublished);
 
-        await processingService.ProcessAsync(booking);
-
-        Assert.Equal(["confirmed", "cancelled"], publisher.PublishedMessages);
-        Assert.Equal([1], publisher.ConfirmationUpdateCounts);
-        Assert.Equal([2], publisher.CancellationUpdateCounts);
-        Assert.NotNull(booking.ConfirmationPublishedAt);
-        Assert.NotNull(booking.CancellationPublishedAt);
+        Assert.Equal(
+            [nameof(BookingConfirmed), nameof(BookingCancelled)],
+            repository.OutboxMessages.Select(message => message.Type));
     }
 
     [Fact]
     public async Task CreateAsync_RejectsUnknownEvent()
     {
-        var timeProvider = new FixedTimeProvider(new DateTimeOffset(2030, 1, 1, 12, 0, 0, TimeSpan.Zero));
+        var timeProvider = CreateTimeProvider();
         var repository = new BookingRepositoryStub();
-        var publisher = new PublisherStub(repository);
         var service = new BookingService(
             repository,
             new EventCatalogStub(eventExists: false),
-            publisher,
+            new UnitOfWorkStub(),
             timeProvider);
         var request = new CreateBooking
         {
@@ -110,39 +134,19 @@ public sealed class BookingProcessingServiceTests
             service.CreateAsync(request, Guid.NewGuid()));
     }
 
-    private sealed class PublisherStub : IBookingConfirmedPublisher, IBookingCancelledPublisher
+    private static FixedTimeProvider CreateTimeProvider() =>
+        new(new DateTimeOffset(2030, 1, 1, 12, 0, 0, TimeSpan.Zero));
+
+    private sealed class UnitOfWorkStub : IUnitOfWork
     {
-        private readonly BookingRepositoryStub _repository;
+        public int TransactionCount { get; private set; }
 
-        public PublisherStub(BookingRepositoryStub repository)
-        {
-            _repository = repository;
-        }
-
-        public bool ConfirmationWasPublished { get; private set; }
-        public bool CancellationWasPublished { get; private set; }
-        public List<int> ConfirmationUpdateCounts { get; } = [];
-        public List<int> CancellationUpdateCounts { get; } = [];
-        public List<string> PublishedMessages { get; } = [];
-
-        public Task PublishAsync(
-            BookingConfirmed message,
+        public async Task<T> ExecuteAsync<T>(
+            Func<CancellationToken, Task<T>> operation,
             CancellationToken cancellationToken = default)
         {
-            ConfirmationWasPublished = true;
-            ConfirmationUpdateCounts.Add(_repository.UpdateCount);
-            PublishedMessages.Add("confirmed");
-            return Task.CompletedTask;
-        }
-
-        public Task PublishAsync(
-            BookingCancelled message,
-            CancellationToken cancellationToken = default)
-        {
-            CancellationWasPublished = true;
-            CancellationUpdateCounts.Add(_repository.UpdateCount);
-            PublishedMessages.Add("cancelled");
-            return Task.CompletedTask;
+            TransactionCount++;
+            return await operation(cancellationToken);
         }
     }
 
@@ -166,12 +170,18 @@ public sealed class BookingProcessingServiceTests
             DateTime changedAt,
             CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
+
+        public Task<int> RemoveUnavailableBeforeAsync(
+            DateTime threshold,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(0);
     }
 
     private sealed class BookingRepositoryStub : IBookingRepository
     {
-        public int UpdateCount { get; private set; }
         public Booking? BookingToReturn { get; init; }
+        public IReadOnlyList<Booking> PendingBookings { get; init; } = [];
+        public List<OutboxMessage> OutboxMessages { get; } = [];
 
         public Task<Booking> AddAsync(
             Booking booking,
@@ -184,16 +194,18 @@ public sealed class BookingProcessingServiceTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult(BookingToReturn);
 
-        public Task<IReadOnlyList<Booking>> GetAwaitingPublicationAsync(
+        public Task<Booking?> GetByIdForUpdateAsync(
+            Guid id,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<Booking>>([]);
+            Task.FromResult(BookingToReturn);
 
-        public Task UpdateAsync(
-            Booking booking,
-            CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<Booking>> GetPendingForUpdateAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(PendingBookings);
+
+        public void AddOutboxMessage(OutboxMessage message)
         {
-            UpdateCount++;
-            return Task.CompletedTask;
+            OutboxMessages.Add(message);
         }
     }
 

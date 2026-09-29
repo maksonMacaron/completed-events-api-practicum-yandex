@@ -5,13 +5,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Shared.Contracts;
+using Shared.Contracts.Infrastructure;
 
 namespace BookingsAPI.Infrastructure.Messaging;
 
 public sealed class EventAvailabilityConsumer : BackgroundService
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
-
     private readonly KafkaOptions _options;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<EventAvailabilityConsumer> _logger;
@@ -61,7 +60,7 @@ public sealed class EventAvailabilityConsumer : BackgroundService
                 {
                     message = JsonSerializer.Deserialize<EventAvailabilityChanged>(
                         result.Message.Value,
-                        SerializerOptions);
+                        KafkaJsonSerializer.Options);
                 }
                 catch (JsonException exception)
                 {
