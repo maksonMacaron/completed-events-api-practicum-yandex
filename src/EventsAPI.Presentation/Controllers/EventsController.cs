@@ -52,6 +52,24 @@ public class EventsController : ControllerBase
         });
     }
 
+    /// <summary>Получить десять самых популярных мероприятий.</summary>
+    [HttpGet("top")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(ApiResult<IReadOnlyList<EventDto>>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetTopAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var events = await _eventService.GetTopAsync(cancellationToken);
+        return Ok(new ApiResult<IReadOnlyList<EventDto>>
+        {
+            Data = events,
+            Message = "Топ-10 самых популярных событий получен",
+            StatusCode = System.Net.HttpStatusCode.OK,
+            Success = true,
+            DateTime = GetUtcNow()
+        });
+    }
+
     /// <summary>Получить мероприятие по идентификатору.</summary>
     [HttpGet("{id:guid}", Name = "GetEventById")]
     [AllowAnonymous]

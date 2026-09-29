@@ -19,6 +19,7 @@
     <ProjectReference Include="..\src\BookingsAPI.Application\BookingsAPI.Application.csproj" />
     <ProjectReference Include="..\src\BookingsAPI.Domain\BookingsAPI.Domain.csproj" />
     <ProjectReference Include="..\src\BookingsAPI.Infrastructure\BookingsAPI.Infrastructure.csproj" />
+    <ProjectReference Include="..\src\EventsAPI.Application\EventsAPI.Application.csproj" />
     <ProjectReference Include="..\src\EventsAPI.Domain\EventsAPI.Domain.csproj" />
     <ProjectReference Include="..\src\EventsAPI.Infrastructure\EventsAPI.Infrastructure.csproj" />
     <ProjectReference Include="..\src\Shared.Contracts\Shared.Contracts.csproj" />
