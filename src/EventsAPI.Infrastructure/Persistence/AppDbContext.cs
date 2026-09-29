@@ -13,6 +13,9 @@ public sealed class AppDbContext : DbContext
 
     public DbSet<ProcessedBookingMessage> ProcessedBookingMessages => Set<ProcessedBookingMessage>();
 
+    public DbSet<ProcessedBookingCancellation> ProcessedBookingCancellations =>
+        Set<ProcessedBookingCancellation>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);

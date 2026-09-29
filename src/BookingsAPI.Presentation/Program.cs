@@ -6,13 +6,13 @@ using System.Text;
 using System.Text.Json.Serialization;
 using BookingsAPI.Application;
 using BookingsAPI.Infrastructure;
-using BookingsAPI.Presentation.Authentication;
-using BookingsAPI.Presentation.Contracts.Responses;
 using BookingsAPI.Presentation.Middlewares;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
+using Shared.Contracts.Authentication;
+using Shared.Contracts.Responses;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -42,8 +42,8 @@ builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
 
 var jwtOptions = builder.Configuration
-    .GetSection(JwtOptions.SectionName)
-    .Get<JwtOptions>()
+    .GetSection(JwtSettings.SectionName)
+    .Get<JwtSettings>()
     ?? throw new InvalidOperationException("Секция Jwt не найдена в конфигурации");
 
 builder.Services

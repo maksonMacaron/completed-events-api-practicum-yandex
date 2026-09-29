@@ -28,9 +28,21 @@ namespace BookingsAPI.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<DateTime?>("CancellationPublishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("cancellation_published_at");
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("cancelled_at");
+
                     b.Property<DateTime?>("ConfirmationPublishedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("confirmation_published_at");
+
+                    b.Property<DateTime?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("confirmed_at");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -43,6 +55,14 @@ namespace BookingsAPI.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("ProcessedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("processed_at");
+
+                    b.Property<DateTime?>("PublicationLockedUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("publication_locked_until");
+
+                    b.Property<bool>("SeatReleaseRequired")
+                        .HasColumnType("boolean")
+                        .HasColumnName("seat_release_required");
 
                     b.Property<int>("Seats")
                         .HasColumnType("integer")
@@ -60,11 +80,34 @@ namespace BookingsAPI.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("PublicationLockedUntil");
+
                     b.HasIndex("UserId");
+
+                    b.HasIndex("Status", "CancellationPublishedAt");
 
                     b.HasIndex("Status", "ConfirmationPublishedAt");
 
                     b.ToTable("bookings", (string)null);
+                });
+
+            modelBuilder.Entity("BookingsAPI.Domain.Entities.KnownEvent", b =>
+                {
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("event_id");
+
+                    b.Property<bool>("IsAvailable")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_available");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("EventId");
+
+                    b.ToTable("known_events", (string)null);
                 });
 #pragma warning restore 612, 618
         }

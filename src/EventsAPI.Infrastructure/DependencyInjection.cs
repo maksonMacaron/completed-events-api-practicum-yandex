@@ -1,3 +1,4 @@
+using EventsAPI.Application.Abstractions.Messaging;
 using EventsAPI.Application.Abstractions.Persistence;
 using EventsAPI.Infrastructure.Messaging;
 using EventsAPI.Infrastructure.Persistence;
@@ -25,8 +26,11 @@ public static class DependencyInjection
             options.UseNpgsql(connectionString));
         services.AddScoped<IEventRepository, EventRepository>();
         services.AddSingleton(CreateKafkaOptions(configuration));
+        services.AddSingleton<IEventAvailabilityPublisher, KafkaEventAvailabilityPublisher>();
         services.AddHostedService<KafkaTopicInitializer>();
+        services.AddHostedService<EventCatalogInitializer>();
         services.AddHostedService<BookingConfirmedConsumer>();
+        services.AddHostedService<BookingCancelledConsumer>();
 
         return services;
     }

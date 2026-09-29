@@ -25,8 +25,12 @@ public static class DependencyInjection
 
         services.AddDbContext<BookingsDbContext>(options => options.UseNpgsql(connectionString));
         services.AddScoped<IBookingRepository, BookingRepository>();
+        services.AddScoped<IEventCatalog, EventCatalog>();
         services.AddSingleton(CreateKafkaOptions(configuration));
         services.AddSingleton<IBookingConfirmedPublisher, KafkaBookingConfirmedPublisher>();
+        services.AddSingleton<IBookingCancelledPublisher, KafkaBookingCancelledPublisher>();
+        services.AddHostedService<KafkaTopicInitializer>();
+        services.AddHostedService<EventAvailabilityConsumer>();
         services.AddHostedService<BookingProcessingWorker>();
         return services;
     }
@@ -36,11 +40,15 @@ public static class DependencyInjection
         var section = configuration.GetSection(KafkaOptions.SectionName);
         var options = new KafkaOptions
         {
-            BootstrapServers = section[nameof(KafkaOptions.BootstrapServers)] ?? string.Empty
+            BootstrapServers = section[nameof(KafkaOptions.BootstrapServers)] ?? string.Empty,
+            ConsumerGroup = section[nameof(KafkaOptions.ConsumerGroup)] ?? string.Empty
         };
 
-        if (string.IsNullOrWhiteSpace(options.BootstrapServers))
-            throw new InvalidOperationException("Адрес Kafka не задан");
+        if (string.IsNullOrWhiteSpace(options.BootstrapServers)
+            || string.IsNullOrWhiteSpace(options.ConsumerGroup))
+        {
+            throw new InvalidOperationException("Параметры Kafka заполнены некорректно");
+        }
 
         return options;
     }

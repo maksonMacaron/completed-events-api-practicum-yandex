@@ -19,5 +19,6 @@
   <ItemGroup>
     <ProjectReference Include="..\EventsAPI.Application\EventsAPI.Application.csproj" />
     <ProjectReference Include="..\EventsAPI.Infrastructure\EventsAPI.Infrastructure.csproj" />
+    <ProjectReference Include="..\Shared.Contracts\Shared.Contracts.csproj" />
   </ItemGroup>
 </Project>

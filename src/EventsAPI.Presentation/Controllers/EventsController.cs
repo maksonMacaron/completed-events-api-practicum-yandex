@@ -1,8 +1,8 @@
 using EventsAPI.Application.DTOs;
 using EventsAPI.Application.Services;
-using EventsAPI.Presentation.Contracts.Responses;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Shared.Contracts.Responses;
 
 namespace EventsAPI.Presentation.Controllers;
 
@@ -24,6 +24,7 @@ public class EventsController : ControllerBase
 
     /// <summary>Получить список мероприятий с фильтрацией и пагинацией.</summary>
     [HttpGet]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(ApiResult<PaginatedResult<EventDto>>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAllAsync(
         [FromQuery] int page = 1,
@@ -53,6 +54,7 @@ public class EventsController : ControllerBase
 
     /// <summary>Получить мероприятие по идентификатору.</summary>
     [HttpGet("{id:guid}", Name = "GetEventById")]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(ApiResult<EventDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetByIdAsync(

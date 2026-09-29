@@ -1,6 +1,6 @@
 using System.Net;
 using BookingsAPI.Domain.Exceptions;
-using BookingsAPI.Presentation.Contracts.Responses;
+using Shared.Contracts.Responses;
 
 namespace BookingsAPI.Presentation.Middlewares;
 

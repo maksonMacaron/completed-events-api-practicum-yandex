@@ -8,10 +8,10 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
+using Shared.Contracts.Authentication;
+using Shared.Contracts.Responses;
 using UsersAPI.Application;
-using UsersAPI.Application.Authentication;
 using UsersAPI.Infrastructure;
-using UsersAPI.Presentation.Contracts.Responses;
 using UsersAPI.Presentation.Middlewares;
 
 var builder = WebApplication.CreateBuilder(args);

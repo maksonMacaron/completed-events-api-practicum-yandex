@@ -11,6 +11,7 @@ public static class DependencyInjection
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IEventService, EventService>();
         services.AddScoped<IBookingConfirmedHandler, BookingConfirmedHandler>();
+        services.AddScoped<IBookingCancelledHandler, BookingCancelledHandler>();
         return services;
     }
 }

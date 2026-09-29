@@ -2,8 +2,8 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.IdentityModel.Tokens;
+using Shared.Contracts.Authentication;
 using UsersAPI.Application.Abstractions.Authentication;
-using UsersAPI.Application.Authentication;
 using UsersAPI.Domain.Entities;
 
 namespace UsersAPI.Infrastructure.Authentication;

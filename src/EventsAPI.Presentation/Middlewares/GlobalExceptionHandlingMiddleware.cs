@@ -1,6 +1,6 @@
 using System.Net;
 using EventsAPI.Domain.Exceptions;
-using EventsAPI.Presentation.Contracts.Responses;
+using Shared.Contracts.Responses;
 
 namespace EventsAPI.Presentation.Middlewares
 {

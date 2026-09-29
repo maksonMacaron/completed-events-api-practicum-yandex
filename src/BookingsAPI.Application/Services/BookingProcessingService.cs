@@ -8,16 +8,19 @@ namespace BookingsAPI.Application.Services;
 public sealed class BookingProcessingService : IBookingProcessingService
 {
     private readonly IBookingRepository _bookingRepository;
-    private readonly IBookingConfirmedPublisher _publisher;
+    private readonly IBookingConfirmedPublisher _confirmedPublisher;
+    private readonly IBookingCancelledPublisher _cancelledPublisher;
     private readonly TimeProvider _timeProvider;
 
     public BookingProcessingService(
         IBookingRepository bookingRepository,
-        IBookingConfirmedPublisher publisher,
+        IBookingConfirmedPublisher confirmedPublisher,
+        IBookingCancelledPublisher cancelledPublisher,
         TimeProvider timeProvider)
     {
         _bookingRepository = bookingRepository;
-        _publisher = publisher;
+        _confirmedPublisher = confirmedPublisher;
+        _cancelledPublisher = cancelledPublisher;
         _timeProvider = timeProvider;
     }
 
@@ -29,11 +32,14 @@ public sealed class BookingProcessingService : IBookingProcessingService
         Booking booking,
         CancellationToken cancellationToken = default)
     {
-        if (booking.Status == BookingStatus.Cancelled
-            || booking.ConfirmationPublishedAt.HasValue)
+        if (booking.Status == BookingStatus.Cancelled)
         {
+            await ProcessCancellationAsync(booking, cancellationToken);
             return;
         }
+
+        if (booking.ConfirmationPublishedAt.HasValue)
+            return;
 
         if (booking.Status == BookingStatus.Pending)
         {
@@ -41,15 +47,51 @@ public sealed class BookingProcessingService : IBookingProcessingService
             await _bookingRepository.UpdateAsync(booking, cancellationToken);
         }
 
+        await PublishConfirmationAsync(booking, releaseLock: true, cancellationToken);
+    }
+
+    private async Task ProcessCancellationAsync(
+        Booking booking,
+        CancellationToken cancellationToken)
+    {
+        if (!booking.SeatReleaseRequired)
+            return;
+
+        if (!booking.ConfirmationPublishedAt.HasValue)
+            await PublishConfirmationAsync(booking, releaseLock: false, cancellationToken);
+
+        if (booking.CancellationPublishedAt.HasValue)
+            return;
+
+        var message = new BookingCancelled(
+            booking.Id,
+            booking.EventId,
+            booking.UserId,
+            booking.Seats,
+            booking.CancelledAt!.Value);
+
+        await _cancelledPublisher.PublishAsync(message, cancellationToken);
+        booking.MarkCancellationPublished(_timeProvider);
+        booking.ReleasePublicationLock();
+        await _bookingRepository.UpdateAsync(booking, cancellationToken);
+    }
+
+    private async Task PublishConfirmationAsync(
+        Booking booking,
+        bool releaseLock,
+        CancellationToken cancellationToken)
+    {
         var message = new BookingConfirmed(
             booking.Id,
             booking.EventId,
             booking.UserId,
             booking.Seats,
-            booking.ProcessedAt!.Value);
+            booking.ConfirmedAt!.Value);
 
-        await _publisher.PublishAsync(message, cancellationToken);
+        await _confirmedPublisher.PublishAsync(message, cancellationToken);
         booking.MarkConfirmationPublished(_timeProvider);
+        if (releaseLock)
+            booking.ReleasePublicationLock();
         await _bookingRepository.UpdateAsync(booking, cancellationToken);
     }
 }

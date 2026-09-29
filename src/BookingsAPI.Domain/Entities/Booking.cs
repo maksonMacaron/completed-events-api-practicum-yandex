@@ -11,7 +11,12 @@ public sealed class Booking
     public BookingStatus Status { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime? ProcessedAt { get; private set; }
+    public DateTime? ConfirmedAt { get; private set; }
+    public DateTime? CancelledAt { get; private set; }
     public DateTime? ConfirmationPublishedAt { get; private set; }
+    public DateTime? CancellationPublishedAt { get; private set; }
+    public DateTime? PublicationLockedUntil { get; private set; }
+    public bool SeatReleaseRequired { get; private set; }
 
     private Booking()
     {
@@ -45,16 +50,21 @@ public sealed class Booking
         if (Status != BookingStatus.Pending)
             return;
 
+        var confirmedAt = timeProvider.GetUtcNow().UtcDateTime;
         Status = BookingStatus.Confirmed;
-        ProcessedAt = timeProvider.GetUtcNow().UtcDateTime;
+        ConfirmedAt = confirmedAt;
+        ProcessedAt = confirmedAt;
     }
 
     public void MarkConfirmationPublished(TimeProvider timeProvider)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
 
-        if (Status != BookingStatus.Confirmed || ProcessedAt is null)
+        if (Status is not (BookingStatus.Confirmed or BookingStatus.Cancelled)
+            || ConfirmedAt is null)
+        {
             throw new DomainValidationException("Опубликовать можно только подтверждённую бронь");
+        }
 
         ConfirmationPublishedAt = timeProvider.GetUtcNow().UtcDateTime;
     }
@@ -66,8 +76,31 @@ public sealed class Booking
         if (Status == BookingStatus.Cancelled)
             throw new DomainValidationException("Бронь уже отменена");
 
+        var cancelledAt = timeProvider.GetUtcNow().UtcDateTime;
+        SeatReleaseRequired = Status == BookingStatus.Confirmed;
         Status = BookingStatus.Cancelled;
-        ProcessedAt = timeProvider.GetUtcNow().UtcDateTime;
+        CancelledAt = cancelledAt;
+        ProcessedAt = cancelledAt;
+    }
+
+    public void MarkCancellationPublished(TimeProvider timeProvider)
+    {
+        ArgumentNullException.ThrowIfNull(timeProvider);
+
+        if (Status != BookingStatus.Cancelled || !SeatReleaseRequired)
+            throw new DomainValidationException("Компенсация для этой брони не требуется");
+
+        CancellationPublishedAt = timeProvider.GetUtcNow().UtcDateTime;
+    }
+
+    public void LockPublication(DateTime lockedUntil)
+    {
+        PublicationLockedUntil = lockedUntil;
+    }
+
+    public void ReleasePublicationLock()
+    {
+        PublicationLockedUntil = null;
     }
 }
 

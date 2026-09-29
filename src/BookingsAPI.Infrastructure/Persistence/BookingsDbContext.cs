@@ -10,6 +10,7 @@ public sealed class BookingsDbContext : DbContext
     }
 
     public DbSet<Booking> Bookings => Set<Booking>();
+    public DbSet<KnownEvent> KnownEvents => Set<KnownEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -48,7 +48,7 @@ public sealed class BookingProcessingWorker : BackgroundService
                     {
                         _logger.LogWarning(
                             exception,
-                            "Не удалось опубликовать подтверждение брони {BookingId}",
+                            "Не удалось опубликовать событие брони {BookingId}",
                             booking.Id);
                     }
                 }

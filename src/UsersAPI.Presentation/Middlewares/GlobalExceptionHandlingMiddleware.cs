@@ -1,6 +1,6 @@
 using System.Net;
+using Shared.Contracts.Responses;
 using UsersAPI.Domain.Exceptions;
-using UsersAPI.Presentation.Contracts.Responses;
 
 namespace UsersAPI.Presentation.Middlewares;
 

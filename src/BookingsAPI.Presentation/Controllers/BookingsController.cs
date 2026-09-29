@@ -1,10 +1,10 @@
 using System.Net;
 using BookingsAPI.Application.DTOs;
 using BookingsAPI.Application.Services;
-using BookingsAPI.Presentation.Contracts.Responses;
 using BookingsAPI.Presentation.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Shared.Contracts.Responses;
 
 namespace BookingsAPI.Presentation.Controllers;
 
@@ -28,6 +28,7 @@ public sealed class BookingsController : ControllerBase
     [HttpPost]
     [ProducesResponseType(typeof(ApiResult<BookingDto>), StatusCodes.Status202Accepted)]
     [ProducesResponseType(typeof(ValidationApiResult), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResult), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> CreateAsync(
         [FromBody] CreateBooking request,
         CancellationToken cancellationToken = default)

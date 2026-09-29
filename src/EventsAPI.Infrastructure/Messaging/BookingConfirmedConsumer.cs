@@ -89,6 +89,15 @@ public sealed class BookingConfirmedConsumer : BackgroundService
                     var handler = scope.ServiceProvider.GetRequiredService<IBookingConfirmedHandler>();
                     var processingResult = await handler.HandleAsync(message, stoppingToken);
                     LogProcessingResult(message, processingResult);
+
+                    if (processingResult is BookingConfirmationResult.EventNotFound
+                        or BookingConfirmationResult.NotEnoughSeats)
+                    {
+                        consumer.Seek(result.TopicPartitionOffset);
+                        await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
+                        continue;
+                    }
+
                     consumer.Commit(result);
                 }
                 catch (Exception exception) when (!stoppingToken.IsCancellationRequested)

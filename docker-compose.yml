@@ -139,6 +139,7 @@ services:
       Jwt__Issuer: EventsAPI
       Jwt__Audience: EventsAPI.Client
       Kafka__BootstrapServers: kafka:29092
+      Kafka__ConsumerGroup: bookings-service
 
 volumes:
   users-data:

@@ -64,6 +64,21 @@ namespace EventsAPI.Infrastructure.Persistence.Migrations
                     b.ToTable("events", (string)null);
                 });
 
+            modelBuilder.Entity("EventsAPI.Domain.Entities.ProcessedBookingCancellation", b =>
+                {
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("booking_id");
+
+                    b.Property<DateTime>("ProcessedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("processed_at");
+
+                    b.HasKey("BookingId");
+
+                    b.ToTable("processed_booking_cancellations", (string)null);
+                });
+
             modelBuilder.Entity("EventsAPI.Domain.Entities.ProcessedBookingMessage", b =>
                 {
                     b.Property<Guid>("BookingId")

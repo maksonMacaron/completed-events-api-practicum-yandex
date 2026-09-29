@@ -19,5 +19,6 @@
   <ItemGroup>
     <ProjectReference Include="..\BookingsAPI.Application\BookingsAPI.Application.csproj" />
     <ProjectReference Include="..\BookingsAPI.Infrastructure\BookingsAPI.Infrastructure.csproj" />
+    <ProjectReference Include="..\Shared.Contracts\Shared.Contracts.csproj" />
   </ItemGroup>
 </Project>

@@ -1,6 +1,6 @@
 using System.Net;
 
-namespace UsersAPI.Presentation.Contracts.Responses;
+namespace Shared.Contracts.Responses;
 
 public class ApiBaseResult
 {

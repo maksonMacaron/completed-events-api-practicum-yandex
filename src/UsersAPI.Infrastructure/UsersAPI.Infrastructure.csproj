@@ -17,6 +17,7 @@
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.14.0" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Shared.Contracts\Shared.Contracts.csproj" />
     <ProjectReference Include="..\UsersAPI.Application\UsersAPI.Application.csproj" />
     <ProjectReference Include="..\UsersAPI.Domain\UsersAPI.Domain.csproj" />
   </ItemGroup>

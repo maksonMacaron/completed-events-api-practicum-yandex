@@ -1,9 +1,9 @@
 using System.Net;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Shared.Contracts.Responses;
 using UsersAPI.Application.DTOs;
 using UsersAPI.Application.Services;
-using UsersAPI.Presentation.Contracts.Responses;
 
 namespace UsersAPI.Presentation.Controllers;
 

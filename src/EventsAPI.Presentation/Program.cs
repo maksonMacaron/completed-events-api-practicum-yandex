@@ -6,13 +6,13 @@ using System.Text;
 using System.Text.Json.Serialization;
 using EventsAPI.Application;
 using EventsAPI.Infrastructure;
-using EventsAPI.Presentation.Authentication;
-using EventsAPI.Presentation.Contracts.Responses;
 using EventsAPI.Presentation.Middlewares;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
+using Shared.Contracts.Authentication;
+using Shared.Contracts.Responses;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -41,8 +41,8 @@ builder.Services.AddSwaggerGen(options =>
 builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
 var jwtSettings = builder.Configuration
-    .GetSection(JwtOptions.SectionName)
-    .Get<JwtOptions>()
+    .GetSection(JwtSettings.SectionName)
+    .Get<JwtSettings>()
     ?? throw new InvalidOperationException("Секция Jwt не найдена в конфигурации");
 
 builder.Services
