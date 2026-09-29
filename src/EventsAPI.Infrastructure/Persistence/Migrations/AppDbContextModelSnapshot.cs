@@ -22,45 +22,6 @@ namespace EventsAPI.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("EventsAPI.Domain.Entities.Booking", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<Guid>("EventId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("event_id");
-
-                    b.Property<DateTime?>("ProcessedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("processed_at");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("status");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EventId");
-
-                    b.HasIndex("Status");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("bookings", (string)null);
-                });
-
             modelBuilder.Entity("EventsAPI.Domain.Entities.Event", b =>
                 {
                     b.Property<Guid>("Id")
@@ -103,65 +64,34 @@ namespace EventsAPI.Infrastructure.Persistence.Migrations
                     b.ToTable("events", (string)null);
                 });
 
-            modelBuilder.Entity("EventsAPI.Domain.Entities.User", b =>
+            modelBuilder.Entity("EventsAPI.Domain.Entities.ProcessedBookingCancellation", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<Guid>("BookingId")
                         .HasColumnType("uuid")
-                        .HasColumnName("id");
+                        .HasColumnName("booking_id");
 
-                    b.Property<string>("Login")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("login");
+                    b.Property<DateTime>("ProcessedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("processed_at");
 
-                    b.Property<string>("PasswordHash")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("password_hash");
+                    b.HasKey("BookingId");
 
-                    b.Property<string>("Role")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("role");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Login")
-                        .IsUnique();
-
-                    b.ToTable("users", (string)null);
+                    b.ToTable("processed_booking_cancellations", (string)null);
                 });
 
-            modelBuilder.Entity("EventsAPI.Domain.Entities.Booking", b =>
+            modelBuilder.Entity("EventsAPI.Domain.Entities.ProcessedBookingMessage", b =>
                 {
-                    b.HasOne("EventsAPI.Domain.Entities.Event", "Event")
-                        .WithMany("Bookings")
-                        .HasForeignKey("EventId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("booking_id");
 
-                    b.HasOne("EventsAPI.Domain.Entities.User", "User")
-                        .WithMany("Bookings")
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                    b.Property<DateTime>("ProcessedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("processed_at");
 
-                    b.Navigation("Event");
+                    b.HasKey("BookingId");
 
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("EventsAPI.Domain.Entities.Event", b =>
-                {
-                    b.Navigation("Bookings");
-                });
-
-            modelBuilder.Entity("EventsAPI.Domain.Entities.User", b =>
-                {
-                    b.Navigation("Bookings");
+                    b.ToTable("processed_booking_messages", (string)null);
                 });
 #pragma warning restore 612, 618
         }

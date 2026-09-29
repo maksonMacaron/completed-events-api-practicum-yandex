@@ -5,14 +5,14 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json.Serialization;
 using EventsAPI.Application;
-using EventsAPI.Application.Authentication;
 using EventsAPI.Infrastructure;
-using EventsAPI.Presentation.Contracts.Responses;
 using EventsAPI.Presentation.Middlewares;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
+using Shared.Contracts.Authentication;
+using Shared.Contracts.Responses;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -108,14 +108,9 @@ catch (Exception exception)
 
 app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
 
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
-
-app.UseHttpsRedirection();
+app.MapOpenApi();
+app.UseSwagger();
+app.UseSwaggerUI();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

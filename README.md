@@ -1,102 +1,185 @@
-# Events API (ASP.NET Core Web API)
+# Events API
 
-Простой REST API для управления мероприятиями.
+Система управления мероприятиями и бронированиями на ASP.NET Core. Приложение разделено на три независимых микросервиса с отдельными базами PostgreSQL. Подтверждения броней передаются через Apache Kafka, прямых HTTP-вызовов между сервисами нет.
 
----
+## Состав системы
 
-## 🚀 Возможности
+| Сервис | Ответственность | База данных | Порт |
+| --- | --- | --- | --- |
+| Users API | регистрация, вход, хеширование пароля, выдача JWT | `users` | `5001` |
+| Events API | CRUD мероприятий, количество доступных мест | `events` | `5002` |
+| Bookings API | создание, просмотр, отмена и подтверждение броней | `bookings` | `5003` |
 
-* Получение списка событий с фильтрацией и пагинацией
-* Получение события по Id
-* Создание события
-* Обновление события
-* Удаление события
-* Регистрация пользователей и вход по JWT
-* Разграничение доступа между ролями `Admin` и `User`
-* Создание брони с быстрым ответом `202 Accepted`
-* Получение текущего состояния брони
-* Отмена своей брони пользователем или любой брони администратором
-* Подтверждение ожидающих броней фоновым сервисом
-* Ограничение количества мест и защита от конкурентного овербукинга
-* Запрет бронирования начавшихся событий и лимит в 10 активных броней на пользователя
+Дополнительные компоненты:
 
----
+- Kafka доступна с хоста на порту `9092`;
+- Zookeeper используется брокером Kafka;
+- `Shared.Contracts` содержит контракты Kafka, имена топиков, общие Kafka-настройки, инициализатор топиков, JSON-настройки, модель JWT и модели API-ответов.
 
-## 🧱 Технологии
+У каждого сервиса свои проекты `Domain`, `Application`, `Infrastructure` и `Presentation`. Сервисы не используют общую схему БД и не содержат навигационных свойств на сущности соседних сервисов. Связи между пользователем, событием и бронью хранятся только как идентификаторы.
 
-* C#
-* ASP.NET Core Web API
-* Entity Framework Core
-* PostgreSQL
-* EF Core Migrations
-* Testcontainers for .NET
-* Swagger (OpenAPI)
-* xUnit
+## Поток BookingConfirmed
 
----
+1. Аутентифицированный пользователь создаёт бронь через `POST /bookings` в Bookings API.
+2. Bookings API проверяет наличие события в локальном каталоге `known_events`. Каталог обновляется сообщениями `EventAvailabilityChanged` из Events API, прямой HTTP-вызов не выполняется.
+3. Фоновый обработчик в одной транзакции подтверждает ожидающую бронь и добавляет `BookingConfirmed` в таблицу `outbox_messages`.
+4. Отдельный outbox-worker публикует сообщение в топик `booking-confirmed` и отмечает его отправленным. В качестве ключа используется `EventId`, поэтому сообщения одного события сохраняют порядок внутри партиции.
+5. Events API читает сообщение в группе `events-service`, создаёт отдельный DI scope и уменьшает `AvailableSeats` у нужного события.
+6. `BookingId` записывается в таблицу `processed_booking_messages` в одной транзакции с изменением события. Повторная доставка того же сообщения не уменьшает количество мест ещё раз.
 
-## 📦 Структура проекта
+Если событие не найдено или мест недостаточно, Events API не помечает сообщение обработанным, не фиксирует офсет и повторяет попытку с задержкой. Оба сервиса при старте пытаются создать необходимые топики через Kafka Admin API; существующий топик считается нормальным состоянием.
 
-Приложение разделено на четыре сборки по принципам Clean Architecture:
+Изменение брони и создание outbox-сообщения атомарны: состояние, для которого не запланирована публикация, в базе появиться не может. Доставка остаётся `at-least-once`: при остановке после отправки в Kafka, но до отметки `published_at`, сообщение может уйти повторно. Идемпотентный обработчик Events API безопасно пропустит такой дубликат.
 
-* `EventsAPI.Domain` — сущности `Event`, `Booking` и `User`, доменные правила и исключения. Слой не зависит от остальных проектов;
-* `EventsAPI.Application` — сценарии приложения, DTO и интерфейсы портов для репозиториев. Зависит только от `Domain`;
-* `EventsAPI.Infrastructure` — `AppDbContext`, EF Core-конфигурации, миграции, реализации репозиториев и фоновый hosted-адаптер. Зависит от `Application` и `Domain`;
-* `EventsAPI.Presentation` — контроллеры, HTTP-контракты, глобальная обработка ошибок и composition root. Зависит от `Application` и `Infrastructure`.
+Несколько экземпляров фонового обработчика атомарно забирают разные порции броней через `FOR UPDATE SKIP LOCKED`. Транзакция удерживает блокировку до одновременной записи статуса и outbox. При простое интервал опроса постепенно увеличивается с одной до тридцати секунд.
 
-Направление зависимостей:
+## Проверка существования события
 
-```text
-Presentation -> Application -> Domain
-       |              ^
-       v              |
-Infrastructure -------+
-       |
-       +---------------------> Domain
-```
+Events API публикует `EventAvailabilityChanged` при создании и удалении мероприятия, а при старте отправляет снимок идентификаторов уже существующих событий. До начала приёма запросов Bookings API перечитывает накопленные события каталога с начала топика, затем продолжает работу в группе `bookings-service`. Локально хранятся только идентификатор, признак доступности и время изменения. Удалённые записи очищаются через 30 дней. Неизвестный или удалённый `EventId` возвращает `404`, при этом сервисы по-прежнему не обращаются друг к другу по HTTP.
 
-Интерфейсы репозиториев объявлены в `Application`, а их EF Core-реализации находятся в `Infrastructure`. Поэтому сценарии приложения не зависят от способа хранения данных.
+## Поток BookingCancelled
 
-Тестовые проекты:
+При отмене подтверждённой брони Bookings API блокирует строку через `FOR UPDATE` и в одной транзакции сохраняет статус `Cancelled` вместе с `BookingCancelled` в outbox. Поэтому параллельные DELETE и worker не могут перезаписать состояние друг друга или создать две отмены. Events API возвращает места через `Event.ReleaseSeats` и в той же транзакции записывает `BookingId` в `processed_booking_cancellations`.
 
-* `EventService.Tests` — unit-тесты домена и сценариев приложения с EF Core InMemory;
-* `EventApi.IntegrationTests` — интеграционные тесты репозиториев и миграций с PostgreSQL;
-* `EventApi.HttpTests` — HTTP-тесты аутентификации, авторизации и контрактов API.
+Outbox-worker публикует сообщения одной брони по порядку их идентификаторов, поэтому `BookingConfirmed` всегда отправляется раньше `BookingCancelled`. Если событие отмены всё же пришло раньше подтверждения, его офсет не фиксируется: обработчик повторит попытку после обработки `BookingConfirmed`. Повторная доставка обоих сообщений безопасна.
 
----
+## JWT и права доступа
 
-## ▶️ Запуск проекта
+JWT выдаёт только Users API через `POST /auth/login`. Все сервисы используют одинаковые `Secret`, `Issuer` и `Audience`, поэтому Events API и Bookings API могут проверить выданный токен самостоятельно.
 
-### 1. Клонировать репозиторий
+- `GET /events` и `GET /events/{id}` доступны без токена;
+- `POST /events`, `PUT /events/{id}` и `DELETE /events/{id}` доступны только роли `Admin`;
+- все эндпоинты `/bookings` требуют аутентификации;
+- пользователь может отменить только свою бронь, администратор — любую.
+
+Для учебного сценария роль можно передать при регистрации. Если поле `role` не указано, создаётся пользователь с ролью `User`.
+
+## Запуск через Docker Compose
+
+Требуется Docker с поддержкой Compose.
 
 ```bash
-git clone https://github.com/maksonMacaron/events-api-practicum-yandex
-cd events-api-practicum-yandex
+docker compose up --build
 ```
 
-### 2. Подготовить PostgreSQL
+После запуска доступны Swagger UI:
 
-Для локального запуска необходим доступный экземпляр PostgreSQL. Среда `Development` использует строку подключения из `src/EventsAPI.Presentation/appsettings.Development.json`:
+- Users API: <http://localhost:5001/swagger>
+- Events API: <http://localhost:5002/swagger>
+- Bookings API: <http://localhost:5003/swagger>
 
-```text
-Host=localhost;Port=5432;Database=eventapi;Username=postgres;Password=postgres
-```
+Каждый сервис при старте применяет миграции только к своей базе данных.
 
-В базовом `appsettings.json` строка подключения оставлена пустой. Для других окружений её необходимо задать через `ConnectionStrings__DefaultConnection`, чтобы production-учётные данные не хранились в репозитории.
-
-Схема базы (`events`, `bookings` и `users`) управляется миграциями EF Core. При запуске приложение вызывает `Database.Migrate()` и автоматически применяет ещё не выполненные миграции. Логин пользователя уникален, а каждая бронь связана с владельцем через `UserId`.
-
-Если база была создана в предыдущей версии приложения через `EnsureCreated()`, удалите её перед первым запуском этой версии. После этого таблицы будут созданы начальной миграцией.
-
-### 3. Запустить проект
+Остановить систему:
 
 ```bash
-dotnet run --project src/EventsAPI.Presentation/EventsAPI.Presentation.csproj --launch-profile http
+docker compose down
 ```
 
-### Миграции
+Удалить также учебные данные из именованных volumes:
 
-Создать миграцию после изменения модели:
+```bash
+docker compose down -v
+```
+
+## Проверка полного сценария
+
+### 1. Зарегистрировать администратора
+
+```http
+POST http://localhost:5001/auth/register
+Content-Type: application/json
+
+{
+  "login": "admin",
+  "password": "strong-password",
+  "role": "Admin"
+}
+```
+
+### 2. Получить токен
+
+```http
+POST http://localhost:5001/auth/login
+Content-Type: application/json
+
+{
+  "login": "admin",
+  "password": "strong-password"
+}
+```
+
+Скопируйте `data.token` из ответа и передавайте его как `Authorization: Bearer <token>`.
+
+### 3. Создать событие
+
+```http
+POST http://localhost:5002/events
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "title": "Концерт",
+  "description": "Большой зал",
+  "startAt": "2030-10-01T18:00:00Z",
+  "endAt": "2030-10-01T20:00:00Z",
+  "totalSeats": 100
+}
+```
+
+Скопируйте `data.id` из ответа.
+
+Дождитесь обработки `EventAvailabilityChanged` сервисом Bookings. Обычно локальный каталог обновляется сразу; при слишком быстром запросе бронирования повторите его через секунду.
+
+### 4. Создать бронь
+
+```http
+POST http://localhost:5003/bookings
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "eventId": "<event-id>",
+  "seats": 2
+}
+```
+
+Bookings API вернёт `202 Accepted`. Через несколько секунд `GET /bookings/{id}` покажет статус `Confirmed`.
+
+### 5. Проверить количество мест
+
+```http
+GET http://localhost:5002/events/<event-id>
+```
+
+Поле `availableSeats` уменьшится на два после обработки события из Kafka.
+
+## Локальный запуск без Docker для приложений
+
+PostgreSQL и Kafka должны быть запущены отдельно. Локальные строки подключения находятся в `appsettings.Development.json`; Kafka по умолчанию ожидается на `localhost:9092`.
+
+```bash
+dotnet run --project src/UsersAPI.Presentation/UsersAPI.Presentation.csproj
+dotnet run --project src/EventsAPI.Presentation/EventsAPI.Presentation.csproj
+dotnet run --project src/BookingsAPI.Presentation/BookingsAPI.Presentation.csproj
+```
+
+Настройки можно переопределить переменными окружения:
+
+- `ConnectionStrings__DefaultConnection`;
+- `Jwt__Secret`, `Jwt__Issuer`, `Jwt__Audience`;
+- `Kafka__BootstrapServers`;
+- `Kafka__ConsumerGroup` для Events API и Bookings API.
+
+## Миграции
+
+У каждого сервиса отдельная начальная миграция EF Core:
+
+- `UsersAPI.Infrastructure/Persistence/Migrations`;
+- `EventsAPI.Infrastructure/Persistence/Migrations`;
+- `BookingsAPI.Infrastructure/Persistence/Migrations`.
+
+Пример создания следующей миграции Events API:
 
 ```bash
 dotnet ef migrations add MigrationName \
@@ -105,203 +188,9 @@ dotnet ef migrations add MigrationName \
   --output-dir Persistence/Migrations
 ```
 
-Применить миграции вручную:
+## Сборка
 
 ```bash
-dotnet ef database update \
-  --project src/EventsAPI.Infrastructure/EventsAPI.Infrastructure.csproj \
-  --startup-project src/EventsAPI.Presentation/EventsAPI.Presentation.csproj
-```
-
-Для выполнения этих команд нужен инструмент `dotnet-ef` версии, совместимой с EF Core проекта.
-
----
-
-## 📘 Swagger
-
-После запуска открой:
-
-`http://localhost:<port>/swagger`
-
-Точный адрес и порт выводятся командой `dotnet run` в строке `Now listening on`.
-
-### Получение JWT-токена
-
-1. Выполните `POST /auth/register`:
-
-   ```json
-   {
-     "login": "admin",
-     "password": "strong-password",
-     "role": "Admin"
-   }
-   ```
-
-   Поле `role` необязательно: без него пользователь получит роль `User`.
-
-2. Выполните `POST /auth/login` с тем же логином и паролем:
-
-   ```json
-   {
-     "login": "admin",
-     "password": "strong-password"
-   }
-   ```
-
-3. Скопируйте значение `data.token` из ответа.
-4. Нажмите кнопку **Authorize** в Swagger и вставьте токен. После этого Swagger будет отправлять его в заголовке `Authorization: Bearer <token>`.
-
-### Настройка JWT
-
-Параметры JWT находятся в секции `Jwt` файла `appsettings.json`:
-
-```json
-{
-  "Jwt": {
-    "Secret": "replace-with-at-least-32-characters",
-    "Issuer": "EventsAPI",
-    "Audience": "EventsAPI.Client",
-    "LifetimeMinutes": 60
-  }
-}
-```
-
-Значение в репозитории предназначено только для локальной разработки. В production задайте длинный случайный секрет через безопасное хранилище конфигурации, например переменную окружения `Jwt__Secret`, и не сохраняйте рабочий ключ в репозитории.
-
----
-
-## 🔐 Роли и права
-
-* `Admin` может создавать, изменять и удалять события, бронировать события и отменять любую бронь.
-* `User` может просматривать события, создавать брони и отменять только собственные брони.
-* `POST /events`, `PUT /events/{id}` и `DELETE /events/{id}` доступны только администратору.
-* `POST /events/{id}/book`, `GET /bookings/{id}` и `DELETE /bookings/{id}` требуют JWT-токен.
-
-Запрос без токена к защищённому эндпоинту получает `401 Unauthorized`. Аутентифицированный пользователь без нужной роли или без права на отмену чужой брони получает `403 Forbidden`.
-
----
-
-## 🔍 Фильтрация и пагинация
-
-GET /events
-
-### Query-параметры:
-
-- title — поиск по названию (регистронезависимый)
-- from — дата начала
-- to — дата окончания
-- page — номер страницы (по умолчанию 1)
-- pageSize — размер страницы (по умолчанию 10)
-
-Пример:
-
-`GET /events?title=концерт&from=2026-06-01&page=1&pageSize=5`
-
----
-
-## 📄 Ответ
-
-```json
-{
-  "data": {
-    "page": 1,
-    "pageSize": 5,
-    "total": 12,
-    "count": 5,
-    "items": []
-  },
-  "success": true,
-  "statusCode": 200,
-  "message": "Список событий"
-}
-```
-
----
-
-## 🎟️ Бронирования
-
-Каждое событие содержит:
-
-* `TotalSeats` — общее количество мест, обязательное при создании и больше нуля;
-* `AvailableSeats` — текущее количество свободных мест, изначально равное `TotalSeats`.
-
-`Booking` содержит `Id` брони, `EventId` мероприятия, `UserId` владельца, `Status`, время создания `CreatedAt` в UTC и время обработки `ProcessedAt` в UTC. До обработки `ProcessedAt` равен `null`.
-
-Статусы:
-
-* `Pending` — бронь создана и ожидает обработки;
-* `Confirmed` — бронь подтверждена;
-* `Rejected` — бронь отклонена;
-* `Cancelled` — бронь отменена владельцем или администратором.
-
-### POST /events/{id}/book
-
-Создаёт бронь для существующего мероприятия и уменьшает `AvailableSeats` на единицу. Эндпоинт требует JWT-токен и берёт `UserId` из claims. Отвечает `202 Accepted`, возвращает бронь со статусом `Pending` в поле `data` и адрес для проверки состояния в заголовке `Location`. Если мероприятие не найдено, возвращает `404`. Для уже начавшегося события возвращается `400`. Если свободные места закончились или у пользователя уже есть 10 активных броней, возвращается `409 Conflict`.
-
-### GET /bookings/{id}
-
-Возвращает текущее состояние брони с кодом `200 OK`. Требует JWT-токен. Если бронь не найдена, возвращает `404`.
-
-### DELETE /bookings/{id}
-
-Отменяет бронь и возвращает место событию. Владелец может отменить свою бронь, администратор — любую. Попытка обычного пользователя отменить чужую бронь возвращает `403 Forbidden`.
-
-Сервис раз в секунду проверяет ожидающие брони. Имитация внешнего вызова выполняется параллельно, но одновременно обрабатывается не больше десяти броней, чтобы не исчерпать пул подключений PostgreSQL. Затем заявка получает статус `Confirmed` и время `ProcessedAt`. Если обработка завершилась ошибкой, бронь получает статус `Rejected`, а зарезервированное место возвращается. Брони и мероприятия хранятся в PostgreSQL и сохраняются после перезапуска приложения.
-
-Создание брони защищено отдельным `SemaphoreSlim` для каждого события: запросы к одному событию выполняются последовательно, а бронирования разных событий не блокируют друг друга. Фоновый singleton-сервис получает scoped-контексты через `IServiceScopeFactory`; для каждой параллельно обрабатываемой брони создаётся отдельный scope.
-
-### Пример через Swagger
-
-1. Зарегистрируйтесь и авторизуйтесь как `Admin`, затем выполните `POST /events` с телом:
-
-   ```json
-   {
-     "title": "Концерт",
-     "startAt": "2030-10-01T18:00:00Z",
-     "endAt": "2030-10-01T20:00:00Z",
-     "totalSeats": 3
-   }
-   ```
-
-2. Скопируйте `data.id` созданного мероприятия. При необходимости войдите как обычный пользователь и трижды выполните `POST /events/{id}/book`. Каждый запрос вернёт `202 Accepted`.
-3. Выполните запрос бронирования в четвёртый раз. API вернёт `409 Conflict`, потому что свободных мест больше нет.
-4. Убедитесь, что заголовки `Location` успешных ответов указывают на `/bookings/{bookingId}`, а `data.status` равен `Pending`.
-5. Откройте `GET /bookings/{bookingId}` сразу после создания, затем повторите запрос через несколько секунд. Статус изменится на `Confirmed`, а `processedAt` получит время обработки.
-
----
-
-## ❌ Ошибки
-
-Если событие или бронь не найдены, соответствующий эндпоинт возвращает `404`:
-
-```json
-{
-  "success": false,
-  "statusCode": 404,
-  "message": "Событие по Id [...] не найдено"
-}
-```
-
----
-
-## 🧪 Тесты
-
-В решении есть три тестовых проекта:
-
-* `EventService.Tests` содержит быстрые unit-тесты доменных правил и Application-сервисов;
-* `EventApi.IntegrationTests` проверяет миграции и реализации репозиториев на настоящей PostgreSQL;
-* `EventApi.HttpTests` проверяет HTTP-коды, JWT-аутентификацию и ролевую авторизацию.
-
-Интеграционные тесты используют одну PostgreSQL в Testcontainers. Перед каждым тестом база пересоздаётся и к ней заново применяются миграции, поэтому тесты не зависят друг от друга или от порядка запуска. Порт и строка подключения выдаются Testcontainers, захардкоженных настроек подключения нет.
-
-Перед запуском всех тестов запустите Docker. Затем выполните:
-
-```bash
-dotnet test EventsAPI.slnx
-```
-
-Запустить только unit-тесты можно без Docker:
-
-```bash
-dotnet test EventService.Tests/EventService.Tests.csproj
+dotnet restore EventsAPI.slnx
+dotnet build EventsAPI.slnx --no-restore
 ```

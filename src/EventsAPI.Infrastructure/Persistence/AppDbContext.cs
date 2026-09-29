@@ -11,9 +11,10 @@ public sealed class AppDbContext : DbContext
 
     public DbSet<Event> Events => Set<Event>();
 
-    public DbSet<Booking> Bookings => Set<Booking>();
+    public DbSet<ProcessedBookingMessage> ProcessedBookingMessages => Set<ProcessedBookingMessage>();
 
-    public DbSet<User> Users => Set<User>();
+    public DbSet<ProcessedBookingCancellation> ProcessedBookingCancellations =>
+        Set<ProcessedBookingCancellation>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

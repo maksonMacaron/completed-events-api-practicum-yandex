@@ -10,9 +10,8 @@ public static class DependencyInjection
     {
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IEventService, EventService>();
-        services.AddScoped<IBookingService, BookingService>();
-        services.AddScoped<IBookingProcessingService, BookingProcessingService>();
-        services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IBookingConfirmedHandler, BookingConfirmedHandler>();
+        services.AddScoped<IBookingCancelledHandler, BookingCancelledHandler>();
         return services;
     }
 }

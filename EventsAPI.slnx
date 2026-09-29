@@ -1,14 +1,27 @@
 <Solution>
-  <Folder Name="/src/">
+  <Folder Name="/src/Bookings/">
+    <Project Path="src/BookingsAPI.Application/BookingsAPI.Application.csproj" />
+    <Project Path="src/BookingsAPI.Domain/BookingsAPI.Domain.csproj" />
+    <Project Path="src/BookingsAPI.Infrastructure/BookingsAPI.Infrastructure.csproj" />
+    <Project Path="src/BookingsAPI.Presentation/BookingsAPI.Presentation.csproj" />
+  </Folder>
+  <Folder Name="/src/Events/">
     <Project Path="src/EventsAPI.Application/EventsAPI.Application.csproj" />
     <Project Path="src/EventsAPI.Domain/EventsAPI.Domain.csproj" />
     <Project Path="src/EventsAPI.Infrastructure/EventsAPI.Infrastructure.csproj" />
     <Project Path="src/EventsAPI.Presentation/EventsAPI.Presentation.csproj" />
   </Folder>
+  <Folder Name="/src/Shared/">
+    <Project Path="src/Shared.Contracts/Shared.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/src/Users/">
+    <Project Path="src/UsersAPI.Application/UsersAPI.Application.csproj" />
+    <Project Path="src/UsersAPI.Domain/UsersAPI.Domain.csproj" />
+    <Project Path="src/UsersAPI.Infrastructure/UsersAPI.Infrastructure.csproj" />
+    <Project Path="src/UsersAPI.Presentation/UsersAPI.Presentation.csproj" />
+  </Folder>
   <Folder Name="/tests/">
-    <Project Path="EventApi.IntegrationTests/EventApi.IntegrationTests.csproj" />
-    <Project Path="EventApi.HttpTests/EventApi.HttpTests.csproj" />
-    <Project Path="EventService.Tests/EventService.Tests.csproj" Id="b2f11f2a-3113-4b64-bedc-170ffa83e2d5" />
+    <Project Path="Services.Tests/Services.Tests.csproj" />
   </Folder>
   <Folder Name="/Элементы решения/">
     <File Path=".gitignore" />

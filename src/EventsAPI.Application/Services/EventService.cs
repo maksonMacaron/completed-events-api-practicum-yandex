@@ -1,17 +1,26 @@
+using EventsAPI.Application.Abstractions.Messaging;
 using EventsAPI.Application.Abstractions.Persistence;
 using EventsAPI.Application.DTOs;
 using EventsAPI.Domain.Entities;
 using EventsAPI.Domain.Exceptions;
+using Shared.Contracts;
 
 namespace EventsAPI.Application.Services;
 
 public class EventService : IEventService
 {
     private readonly IEventRepository _eventRepository;
+    private readonly IEventAvailabilityPublisher _eventAvailabilityPublisher;
+    private readonly TimeProvider _timeProvider;
 
-    public EventService(IEventRepository eventRepository)
+    public EventService(
+        IEventRepository eventRepository,
+        IEventAvailabilityPublisher eventAvailabilityPublisher,
+        TimeProvider timeProvider)
     {
         _eventRepository = eventRepository;
+        _eventAvailabilityPublisher = eventAvailabilityPublisher;
+        _timeProvider = timeProvider;
     }
 
     public async Task<EventInfo> CreateEventAsync(
@@ -26,6 +35,7 @@ public class EventService : IEventService
             item.TotalSeats.GetValueOrDefault());
 
         await _eventRepository.AddAsync(eventItem, cancellationToken);
+        await PublishAvailabilityAsync(eventItem.Id, isAvailable: true, cancellationToken);
         return ToInfo(eventItem);
     }
 
@@ -33,6 +43,7 @@ public class EventService : IEventService
     {
         var eventItem = await FindByIdAsync(id, cancellationToken);
         await _eventRepository.DeleteAsync(eventItem, cancellationToken);
+        await PublishAvailabilityAsync(eventItem.Id, isAvailable: false, cancellationToken);
     }
 
     public async Task<PaginatedResult<EventDto>> GetAllAsync(
@@ -88,6 +99,17 @@ public class EventService : IEventService
     private async Task<Event> FindByIdAsync(Guid id, CancellationToken cancellationToken) =>
         await _eventRepository.GetByIdAsync(id, trackChanges: true, cancellationToken)
         ?? throw new EventNotFoundException(id);
+
+    private Task PublishAvailabilityAsync(
+        Guid eventId,
+        bool isAvailable,
+        CancellationToken cancellationToken) =>
+        _eventAvailabilityPublisher.PublishAsync(
+            new EventAvailabilityChanged(
+                eventId,
+                isAvailable,
+                _timeProvider.GetUtcNow().UtcDateTime),
+            cancellationToken);
 
     private static EventDto ToDto(Event eventItem) => new()
     {

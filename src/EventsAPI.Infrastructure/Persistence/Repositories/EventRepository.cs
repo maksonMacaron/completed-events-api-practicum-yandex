@@ -23,6 +23,13 @@ public sealed class EventRepository : IEventRepository
         return eventItem;
     }
 
+    public async Task<IReadOnlyList<Guid>> GetIdsAsync(
+        CancellationToken cancellationToken = default) =>
+        await _context.Events
+            .AsNoTracking()
+            .Select(item => item.Id)
+            .ToListAsync(cancellationToken);
+
     public async Task<PaginatedResult<Event>> GetAllAsync(
         int page,
         int pageSize,
@@ -76,6 +83,119 @@ public sealed class EventRepository : IEventRepository
 
     public Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default) =>
         _context.Events.AnyAsync(item => item.Id == id, cancellationToken);
+
+    public async Task<BookingConfirmationResult> ApplyBookingConfirmationAsync(
+        Guid bookingId,
+        Guid eventId,
+        int seats,
+        DateTime confirmedAt,
+        CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+
+        if (await _context.ProcessedBookingMessages.AnyAsync(
+                item => item.BookingId == bookingId,
+                cancellationToken))
+        {
+            return BookingConfirmationResult.AlreadyProcessed;
+        }
+
+        var eventItem = await _context.Events.FirstOrDefaultAsync(
+            item => item.Id == eventId,
+            cancellationToken);
+
+        var result = eventItem switch
+        {
+            null => BookingConfirmationResult.EventNotFound,
+            _ when !eventItem.TryReserveSeats(seats) => BookingConfirmationResult.NotEnoughSeats,
+            _ => BookingConfirmationResult.Applied
+        };
+
+        if (result != BookingConfirmationResult.Applied)
+            return result;
+
+        _context.ProcessedBookingMessages.Add(
+            new ProcessedBookingMessage(bookingId, confirmedAt));
+
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return result;
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            _context.ChangeTracker.Clear();
+
+            if (await _context.ProcessedBookingMessages.AnyAsync(
+                    item => item.BookingId == bookingId,
+                    cancellationToken))
+            {
+                return BookingConfirmationResult.AlreadyProcessed;
+            }
+
+            throw;
+        }
+    }
+
+    public async Task<BookingCancellationResult> ApplyBookingCancellationAsync(
+        Guid bookingId,
+        Guid eventId,
+        int seats,
+        DateTime cancelledAt,
+        CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+
+        if (await _context.ProcessedBookingCancellations.AnyAsync(
+                item => item.BookingId == bookingId,
+                cancellationToken))
+        {
+            return BookingCancellationResult.AlreadyProcessed;
+        }
+
+        var confirmationProcessed = await _context.ProcessedBookingMessages.AnyAsync(
+            item => item.BookingId == bookingId,
+            cancellationToken);
+        if (!confirmationProcessed)
+            return BookingCancellationResult.ConfirmationNotProcessed;
+
+        var eventItem = await _context.Events.FirstOrDefaultAsync(
+            item => item.Id == eventId,
+            cancellationToken);
+
+        var result = BookingCancellationResult.EventNotFound;
+        if (eventItem is not null)
+        {
+            eventItem.ReleaseSeats(seats);
+            result = BookingCancellationResult.Released;
+        }
+
+        _context.ProcessedBookingCancellations.Add(
+            new ProcessedBookingCancellation(bookingId, cancelledAt));
+
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return result;
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            _context.ChangeTracker.Clear();
+
+            if (await _context.ProcessedBookingCancellations.AnyAsync(
+                    item => item.BookingId == bookingId,
+                    cancellationToken))
+            {
+                return BookingCancellationResult.AlreadyProcessed;
+            }
+
+            throw;
+        }
+    }
 
     public async Task UpdateAsync(
         Event eventItem,
