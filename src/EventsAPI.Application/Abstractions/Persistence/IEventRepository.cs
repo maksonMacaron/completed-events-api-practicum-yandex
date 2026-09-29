@@ -21,6 +21,10 @@ public interface IEventRepository
         bool trackChanges = false,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<Event>> GetTopAsync(
+        int count,
+        CancellationToken cancellationToken = default);
+
     Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default);
     Task<BookingConfirmationResult> ApplyBookingConfirmationAsync(
         Guid bookingId,

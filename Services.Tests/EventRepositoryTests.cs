@@ -10,6 +10,32 @@ namespace Services.Tests;
 public sealed class EventRepositoryTests
 {
     [Fact]
+    public async Task GetTopAsync_OrdersEventsBySoldSeatsPercentage()
+    {
+        await using var fixture = await EventRepositoryFixture.CreateAsync(totalSeats: 10);
+        var halfSold = Event.Create(
+            "Спектакль",
+            null,
+            DateTime.UtcNow.AddDays(2),
+            DateTime.UtcNow.AddDays(2).AddHours(2),
+            20);
+        halfSold.TryReserveSeats(10);
+        var almostSoldOut = Event.Create(
+            "Фестиваль",
+            null,
+            DateTime.UtcNow.AddDays(3),
+            DateTime.UtcNow.AddDays(3).AddHours(2),
+            10);
+        almostSoldOut.TryReserveSeats(8);
+        await fixture.Repository.AddAsync(halfSold);
+        await fixture.Repository.AddAsync(almostSoldOut);
+
+        var result = await fixture.Repository.GetTopAsync(2);
+
+        Assert.Equal([almostSoldOut.Id, halfSold.Id], result.Select(item => item.Id));
+    }
+
+    [Fact]
     public async Task ApplyBookingConfirmationAsync_DoesNotMarkMissingEventAsProcessed()
     {
         await using var fixture = await EventRepositoryFixture.CreateAsync(totalSeats: 1);

@@ -14,6 +14,7 @@
 
 - Kafka доступна с хоста на порту `9092`;
 - Zookeeper используется брокером Kafka;
+- Redis доступен с хоста на порту `6379`;
 - `Shared.Contracts` содержит контракты Kafka, имена топиков, общие Kafka-настройки, инициализатор топиков, JSON-настройки, модель JWT и модели API-ответов.
 
 У каждого сервиса свои проекты `Domain`, `Application`, `Infrastructure` и `Presentation`. Сервисы не используют общую схему БД и не содержат навигационных свойств на сущности соседних сервисов. Связи между пользователем, событием и бронью хранятся только как идентификаторы.
@@ -43,11 +44,22 @@ Events API публикует `EventAvailabilityChanged` при создании
 
 Outbox-worker публикует сообщения одной брони по порядку их идентификаторов, поэтому `BookingConfirmed` всегда отправляется раньше `BookingCancelled`. Если событие отмены всё же пришло раньше подтверждения, его офсет не фиксируется: обработчик повторит попытку после обработки `BookingConfirmed`. Повторная доставка обоих сообщений безопасна.
 
+## Кеширование событий
+
+Events API использует Redis как общий кеш для всех экземпляров сервиса и применяет паттерн Cache-Aside.
+
+- `GET /events/{id}` сначала ищет событие по ключу `event:{id}`. При промахе данные загружаются из PostgreSQL и сохраняются на 5 минут. После создания, обновления или удаления события ключ инвалидируется только после успешной записи в базу. Такой порядок сохраняет базу источником актуальных данных, а TTL служит дополнительной защитой, если удалить ключ не удалось.
+- `GET /events/top` возвращает десять событий с наибольшей долей проданных мест: `(total_seats - available_seats) / total_seats`. Список хранится по ключу `events:top10` в течение 10 минут. Для рейтингового агрегата небольшая задержка обновления допустима, поэтому он обновляется только по TTL без инвалидации при каждом бронировании.
+
+Подтверждение или отмена брони через Kafka изменяет количество доступных мест. После успешной записи обработчик удаляет `event:{id}`, поэтому следующий запрос получает актуальное событие из базы. Ключ топа при этом не удаляется и продолжает жить до истечения своего TTL.
+
+Соединение `ConnectionMultiplexer` зарегистрировано как singleton. Если Redis временно недоступен, операции кеша записывают предупреждение в журнал и не прерывают запрос: чтение продолжается из PostgreSQL. Значения TTL и строка подключения находятся в секции `Redis` файла конфигурации и могут быть переопределены переменными окружения.
+
 ## JWT и права доступа
 
 JWT выдаёт только Users API через `POST /auth/login`. Все сервисы используют одинаковые `Secret`, `Issuer` и `Audience`, поэтому Events API и Bookings API могут проверить выданный токен самостоятельно.
 
-- `GET /events` и `GET /events/{id}` доступны без токена;
+- `GET /events`, `GET /events/{id}` и `GET /events/top` доступны без токена;
 - `POST /events`, `PUT /events/{id}` и `DELETE /events/{id}` доступны только роли `Admin`;
 - все эндпоинты `/bookings` требуют аутентификации;
 - пользователь может отменить только свою бронь, администратор — любую.
@@ -156,7 +168,7 @@ GET http://localhost:5002/events/<event-id>
 
 ## Локальный запуск без Docker для приложений
 
-PostgreSQL и Kafka должны быть запущены отдельно. Локальные строки подключения находятся в `appsettings.Development.json`; Kafka по умолчанию ожидается на `localhost:9092`.
+Для полного локального сценария PostgreSQL, Kafka и Redis запускаются отдельно. Локальные строки подключения находятся в `appsettings.Development.json`; Kafka по умолчанию ожидается на `localhost:9092`, Redis — на `localhost:6379`. Без Redis Events API продолжает читать данные из PostgreSQL, но не использует кеш.
 
 ```bash
 dotnet run --project src/UsersAPI.Presentation/UsersAPI.Presentation.csproj
@@ -170,6 +182,7 @@ dotnet run --project src/BookingsAPI.Presentation/BookingsAPI.Presentation.cspro
 - `Jwt__Secret`, `Jwt__Issuer`, `Jwt__Audience`;
 - `Kafka__BootstrapServers`;
 - `Kafka__ConsumerGroup` для Events API и Bookings API.
+- `Redis__ConnectionString`, `Redis__EventTtlMinutes`, `Redis__TopEventsTtlMinutes` для Events API.
 
 ## Миграции
 
@@ -193,4 +206,5 @@ dotnet ef migrations add MigrationName \
 ```bash
 dotnet restore EventsAPI.slnx
 dotnet build EventsAPI.slnx --no-restore
+dotnet test EventsAPI.slnx --no-build
 ```

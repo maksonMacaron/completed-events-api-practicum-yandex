@@ -81,6 +81,17 @@ public sealed class EventRepository : IEventRepository
         return await query.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<Event>> GetTopAsync(
+        int count,
+        CancellationToken cancellationToken = default) =>
+        await _context.Events
+            .AsNoTracking()
+            .OrderByDescending(item =>
+                (double)(item.TotalSeats - item.AvailableSeats) / item.TotalSeats)
+            .ThenBy(item => item.StartAt)
+            .Take(count)
+            .ToListAsync(cancellationToken);
+
     public Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default) =>
         _context.Events.AnyAsync(item => item.Id == id, cancellationToken);
 
