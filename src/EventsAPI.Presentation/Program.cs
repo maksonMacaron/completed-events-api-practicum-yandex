@@ -11,14 +11,38 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+using Serilog;
+using Serilog.Formatting.Compact;
 using Shared.Contracts.Authentication;
 using Shared.Contracts.Responses;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Logging.ClearProviders();
-builder.Logging.AddConsole();
-builder.Logging.AddDebug();
+builder.Host.UseSerilog((context, loggerConfiguration) =>
+    loggerConfiguration
+        .ReadFrom.Configuration(context.Configuration)
+        .Enrich.FromLogContext()
+        .WriteTo.Console(new CompactJsonFormatter()));
+
+var serviceName = builder.Configuration["OpenTelemetry:ServiceName"]
+    ?? throw new InvalidOperationException("Имя сервиса OpenTelemetry не задано");
+var otlpEndpoint = builder.Configuration["Otlp:Endpoint"]
+    ?? throw new InvalidOperationException("Адрес OTLP не задан");
+
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService(serviceName))
+    .WithTracing(tracing => tracing
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddEntityFrameworkCoreInstrumentation()
+        .AddOtlpExporter(options => options.Endpoint = new Uri(otlpEndpoint)))
+    .WithMetrics(metrics => metrics
+        .AddAspNetCoreInstrumentation()
+        .AddRuntimeInstrumentation()
+        .AddPrometheusExporter());
 
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen(options =>
@@ -113,6 +137,7 @@ app.UseSwagger();
 app.UseSwaggerUI();
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapPrometheusScrapingEndpoint();
 app.MapControllers();
 
 app.Run();

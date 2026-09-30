@@ -82,6 +82,39 @@ docker compose up --build
 
 Каждый сервис при старте применяет миграции только к своей базе данных.
 
+## Наблюдаемость
+
+Во все три API встроен OpenTelemetry SDK. Он автоматически собирает трейсы входящих и исходящих HTTP-запросов, обращения Entity Framework Core к PostgreSQL, HTTP-метрики и метрики рантайма .NET. Сервисы отправляют трейсы в Jaeger по OTLP, а метрики публикуют в формате Prometheus. Serilog выводит журналы сервисов в структурированном JSON-формате.
+
+Стек наблюдаемости запускается вместе с приложением:
+
+```bash
+docker compose up --build
+```
+
+После запуска доступны:
+
+| Инструмент | Адрес | Назначение |
+| --- | --- | --- |
+| Prometheus | <http://localhost:9090> | сбор и запрос метрик; состояние целей находится на странице `/targets` |
+| Jaeger | <http://localhost:16686> | поиск распределённых трейсов по сервисам `users-service`, `events-service` и `bookings-service` |
+| Grafana | <http://localhost:3000> | дашборд технических метрик; логин и пароль — `admin` / `admin` |
+| OTLP gRPC | `localhost:4317` | приём трейсов Jaeger |
+
+Эндпоинты метрик сервисов доступны по адресам:
+
+- Users API: <http://localhost:5001/metrics>
+- Events API: <http://localhost:5002/metrics>
+- Bookings API: <http://localhost:5003/metrics>
+
+Источник данных Prometheus и дашборд `Events API - Services Overview` создаются в Grafana автоматически. Дашборд показывает p50, p95 и p99 HTTP latency, throughput, долю ответов 5xx, количество активных запросов, сборки мусора и состояние пула потоков .NET. После отправки нескольких запросов к API данные появятся в Prometheus и Grafana, а соответствующие HTTP- и SQL-спаны — в Jaeger. JSON дашборда хранится в `monitoring/grafana/dashboards/services-overview.json`.
+
+Структурированные логи можно посмотреть командой:
+
+```bash
+docker compose logs users-api events-api bookings-api
+```
+
 Остановить систему:
 
 ```bash
